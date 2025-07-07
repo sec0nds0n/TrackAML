@@ -26,6 +26,7 @@ env/
 Thumbs.db
 
 # Models or heavy data
+backend/models/
 models/
 
 # Logs or temporary files
