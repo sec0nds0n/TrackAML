@@ -1,3 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+instance/
+.env
+config.pyroot@trackaml:~/TrackAML/backend# cat ../.gitignore 
 # Python
 __pycache__/
 *.pyc
@@ -32,4 +39,3 @@ models/
 # Logs or temporary files
 *.log
 *.tmp
-*.bak
