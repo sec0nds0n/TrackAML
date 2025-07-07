@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Wallet yang Belum Dihitung Profil Risikonya</h2>
+
+    {% if wallets %}
+        <ul class="list-group">
+            {% for wallet in wallets %}
+                <li class="list-group-item">{{ wallet }}</li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="text-success">Semua wallet sudah memiliki profil risiko!</p>
+    {% endif %}
+    
+    <a href="{{ url_for('wallet') }}" class="btn btn-primary mt-3">Kembali</a>
+</div>
+{% endblock %}

@@ -1,0 +1,133 @@
+/* Memastikan border antar baris tetap terlihat setelah sorting */
+#transactionTable tbody tr {
+    border-bottom: 1px solid #dee2e6 !important;
+}
+
+/* Menyesuaikan ukuran pagination agar tidak terlalu lebar */
+.pagination {
+    display: flex;
+    justify-content: center;
+    margin-top: 15px;
+}
+
+.pagination .page-link {
+    padding: 5px 12px;
+    font-size: 14px;
+}
+
+/* Memastikan tabel tidak melebihi container */
+.table-responsive {
+    overflow-x: auto;
+}
+
+/* Mengubah tampilan kolom sortable */
+th.sortable {
+    cursor: pointer;
+    position: relative;
+}
+
+/* Menambahkan ikon panah untuk sorting */
+th.sortable::after {
+    content: " ⇅"; /* Default ikon */
+    font-size: 12px;
+    color: #6c757d;
+    margin-left: 5px;
+}
+
+th.sorted-asc::after {
+    content: " ▲";
+    color: #000;
+}
+
+th.sorted-desc::after {
+    content: " ▼";
+    color: #000;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+/* Legend Table Styling */
+.legend-table {
+    width: 100%;
+    max-width: 600px;
+    margin: 20px auto;
+    border-collapse: collapse;
+    box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.legend-table th, .legend-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+.legend-table th {
+    background-color: #f4f4f4;
+    font-weight: bold;
+    text-align: center;
+}
+
+.legend-table tr:hover {
+    background-color: #f9f9f9;
+}
+
+.color-box {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid #ccc;
+}
+
+.wallet-address {
+    font-family: monospace;
+    font-size: 14px;
+    color: #333;
+}
+.button-container {
+    text-align: center;
+    margin: 10px 0;
+}
+
+.button-container form {
+    display: inline-block;
+}
+
+.btn {
+    padding: 10px 20px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    transition: background 0.3s ease-in-out;
+}
+
+.btn-primary {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #0056b3;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #a71d2a;
+}
+#graph-container {
+    margin-top: 10px; /* Mengurangi jarak antara tombol dan graph */
+    width: 100%;
+    height: 500px; /* Pastikan ukuran graph tetap proporsional */
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+

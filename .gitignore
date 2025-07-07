@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# Flask
+instance/
+.env
+.env.*
+
+# Virtual environment
+venv/
+ENV/
+env/
+*.egg-info/
+
+# IDEs
+.vscode/
+.idea/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Models or heavy data
+models/
+
+# Logs or temporary files
+*.log
+*.tmp
+*.bak

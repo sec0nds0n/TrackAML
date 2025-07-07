@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block title %}Transaction Analysis{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>Transaction Analysis</h2>
+    </div>
+    <div class="card-body">
+        <form action="{{ url_for('aml.transaction_analysis') }}" method="get" class="mb-3">
+            <div class="input-group">
+                <input type="text" class="form-control" name="wallet" placeholder="Cari transaksi (sender, receiver)" value="{{ wallet }}">
+                <button type="submit" class="btn btn-primary">Search</button>
+            </div>
+        </form>
+
+        <div class="alert alert-info">
+            <p>📝 <strong>Catatan:</strong></p>
+            <ul>
+                <li>Klik alamat wallet (Sender/Receiver) untuk melihat detail wallet di halaman KYC.</li>
+                <li>Copy dan paste alamat wallet ke input pencarian untuk menganalisis transaksi secara rinci.</li>
+            </ul>
+        </div>
+
+        {% if wallet %}
+        <div class="table-responsive">
+            <table class="table table-striped table-bordered">
+                <thead>
+                    <tr>
+                        <th>Sender</th>
+                        <th>Receiver</th>
+                        <th>
+                            <a href="{{ url_for('aml.transaction_analysis', search=wallet, sort_by='value', order='asc' if order=='desc' else 'desc', page=page) }}">
+                                Value (ETH) {% if sort_by == 'value' %}{{ '↑' if order == 'asc' else '↓' }}{% endif %}
+                            </a>
+                        </th>
+                        <th>
+                            <a href="{{url_for('aml.transaction_analysis', search=wallet, sort_by='timestamp', order='asc' if order=='desc' else 'desc', page=page) }}">
+                                Timestamp {% if sort_by == 'timestamp' %}{{ '↑' if order == 'asc' else '↓' }}{% endif %}
+                            </a>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in transactions %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('aml.kyc', wallet=tx[0]) }}">{{ tx[0] }}</a>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('aml.kyc', wallet=tx[1]) }}">{{ tx[1] }}</a>
+                        </td>
+                        <td>{{ tx[2] }}</td>
+                        <td>{{ tx[3] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Sederhana -->
+        {% if total_pages > 1 %}
+        <nav class="mt-3 text-center">
+            {% if page > 1 %}
+                <a href="{{ url_for('aml.transaction_analysis', search=wallet, sort_by=sort_by, order=order, page=1) }}">«</a>  
+                <a href="{{ url_for('aml.transaction_analysis', search=wallet, sort_by=sort_by, order=order, page=page-1) }}">‹</a>  
+            {% endif %}
+
+            {% set start_page = 1 if page - 2 < 1 else page - 2 %}
+            {% set end_page = total_pages if page + 2 > total_pages else page + 2 %}
+
+            {% for p in range(start_page, end_page + 1) %}
+                {% if p == page %}
+                    <strong>{{ p }}</strong>
+                {% else %}
+                    <a href="{{ url_for('aml.transaction_analysis', search=wallet, sort_by=sort_by, order=order, page=p) }}">{{ p }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {% if page < total_pages %}
+                <a href="{{ url_for('aml.transaction_analysis', search=wallet, sort_by=sort_by, order=order, page=page+1) }}">›</a>  
+                <a href="{{ url_for('aml.transaction_analysis', search=wallet, sort_by=sort_by, order=order, page=total_pages) }}">»</a>  
+            {% endif %}
+        </nav>
+        {% endif %}
+
+        {% if anomaly_transactions %}
+        <div class="card mt-4 border-danger">
+            <div class="card-header bg-danger text-white">
+                <h3>Anomaly Transactions</h3>
+            </div>
+            <div class="card-body table-responsive">
+                <table class="table table-bordered table-striped">
+                    <thead>
+                        <tr>
+                            <th>Sender</th>
+                            <th>Receiver</th>
+                            <th>Value (ETH)</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tx in anomaly_transactions %}
+                            <tr class="table-danger">
+                                <td>{{ tx[0] }}</td>
+                                <td>{{ tx[1] }}</td>
+                                <td>{{ tx[2] }}</td>
+                                <td>{{ tx[3] }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if wallet %}
+        <div class="card mt-4">
+            <div class="card-header">
+                <h3>Transaction Timeline for {{ wallet }}</h3>
+            </div>
+            <div class="card-body">
+                <canvas id="transactionChart"></canvas>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                var ctx = document.getElementById('transactionChart').getContext('2d');
+
+                var transactionData = {
+                    labels: {{ timestamps | tojson }},
+                    datasets: [{
+                        label: 'ETH Transactions Over Time',
+                        data: {{ values | tojson }},
+                        pointBackgroundColor: {{ point_colors | tojson }},  // <-- ini array warna titik
+                        borderColor: 'gray',
+                        borderWidth: 2,
+                        fill: false
+                    }]
+                };
+
+                new Chart(ctx, {
+                    type: 'line',
+                    data: transactionData,
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            zoom: {
+                                pan: {
+                                    enabled: true,
+                                    mode: 'x', // geser horizontal saja
+                                },
+                                zoom: {
+                                    wheel: {
+                                        enabled: true,
+                                    },
+                                    pinch: {
+                                        enabled: true
+                                    },
+                                    mode: 'x', // zoom horizontal (time axis)
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: 'Time' }
+                            },
+                            y: {
+                                title: { display: true, text: 'ETH Transacted' }
+                            }
+                        }
+                    }
+                });                
+            });
+        </script>
+        {% endif %}
+
+        {% if wallet %}
+        <div class="d-flex gap-2 mt-3">
+            <form method="GET" action="{{ url_for('aml.transaction_graph') }}">
+                <input type="hidden" name="search" value="{{ wallet }}">
+                <button type="submit" class="btn btn-info btn-lg shadow-sm">
+                    Analisis Grafik
+                </button>
+            </form>
+
+            <a href="{{ url_for('aml.transitive_risk') }}?search={{ wallet }}" class="btn btn-outline-danger">
+                Transitive Risk
+            </a>
+
+            <a href="{{ url_for('aml.advance_analysis', search=wallet) }}" class="btn btn-warning btn-lg shadow-sm">
+                Advanced Analysis
+            </a>
+        </div>
+        {% endif %}
+        
+        {% else %}
+            <p class="text-muted text-center">🔍 Silakan cari transaksi untuk menampilkan hasil.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

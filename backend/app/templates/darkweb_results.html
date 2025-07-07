@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mt-4">Dark Web Monitoring</h2>
+
+    <div class="alert alert-info">
+        🔍 Hasil pencarian untuk wallet: <strong>{{ wallet }}</strong>
+    </div>
+
+    <!-- Hasil dari Ahmia -->
+    <h3 class="mt-4">Hasil dari Ahmia</h3>
+    {% if ahmia_results[0].title == "No results found" %}
+        <div class="alert alert-success">✅ Tidak ditemukan hasil di Ahmia.</div>
+    {% else %}
+        <ul class="list-group">
+            {% for result in ahmia_results %}
+                <li class="list-group-item">
+                    <strong>{{ result.title }}</strong><br>
+                    <a href="{{ result.url }}" target="_blank">{{ result.url }}</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <!-- Hasil dari Forum Dark Web (Dread) -->
+    <h3 class="mt-4">Hasil dari Forum Dark Web (Dread)</h3>
+    {% if not dread_results or dread_results[0].title == "No results found" %}
+        <div class="alert alert-success">✅ Tidak ditemukan hasil di forum Dread.</div>
+    {% else %}
+        <ul class="list-group">
+            {% for result in dread_results %}
+                <li class="list-group-item">
+                    <strong>{{ result.title }}</strong><br>
+                    <a href="{{ result.url }}" target="_blank">{{ result.url }}</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <a href="{{ url_for('kyc') }}" class="btn btn-secondary mt-3">Kembali ke KYC</a>
+</div>
+{% endblock %}

@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mt-4">Know Your Customer (KYC)</h2>
+
+    <!-- Form Search Wallet -->
+    <form method="POST" class="mb-3">
+        <div class="row">
+            <div class="col-md-6">
+                <label for="wallet_address" class="form-label">Search Wallet</label>
+                <input type="text" class="form-control" id="wallet_address" name="wallet_address"
+                       placeholder="Enter wallet address" required>
+            </div>
+            <div class="col-md-6 align-self-end">
+                <button type="submit" class="btn btn-primary">Search</button>
+            </div>
+        </div>
+    </form>
+
+    <!-- Tampilkan Error Jika Wallet Belum di Fetch -->
+    {% if wallet_not_found %}
+    <div class="alert alert-warning">
+        ❌ Wallet <strong>{{ wallet }}</strong> belum memiliki data transaksi. <br>
+        Silakan lakukan fetch transaksi terlebih dahulu.
+    </div>
+    {% else %}
+
+        <!-- Profil Risiko -->
+        {% if wallet %}
+        <h3 class="mt-4">Wallet Information</h3>
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Wallet</label>
+                <input type="text" class="form-control" value="{{ wallet }}" readonly>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Profil Risiko</label>
+                <input type="text" class="form-control 
+                    {% if risk_profile == 'High Risk' %} bg-danger text-white
+                    {% elif risk_profile == 'Medium Risk' %} bg-warning
+                    {% else %} bg-success text-white
+                    {% endif %}" value="{{ risk_profile }}" readonly>
+            </div>
+            {% if is_blacklisted %}
+            <div class="alert alert-danger mb-3">
+                🚨 Wallet ini masuk daftar blacklist dari <strong>{{ is_blacklisted.source }}</strong> karena <strong>{{ is_blacklisted.reason }}</strong>.
+            </div>
+            {% endif %}
+            
+        </div>
+        <div class="card border-secondary mb-3">
+            <div class="card-header bg-light text-dark">
+                Wallet Summary: {{ wallet }}
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <!-- Kolom Kiri: Saldo & Total Transaksi -->
+                    <div class="col-md-6">
+                        <div class="card border-secondary mb-3">
+                            <div class="card-header bg-light text-dark">Saldo</div>
+                            <div class="card-body">
+                                <h5 class="card-title">{{ wallet_summary.balance }} ETH</h5>
+                            </div>
+                        </div>
+        
+                        <div class="card border-secondary mb-3">
+                            <div class="card-header bg-light text-dark">Total Transaksi</div>
+                            <div class="card-body">
+                                <p><strong>Total Diterima:</strong> {{ wallet_summary.total_received }} ETH</p>
+                                <p><strong>Total Dikirim:</strong> {{ wallet_summary.total_sent }} ETH</p>
+                            </div>
+                        </div>
+                    </div>
+        
+                    <!-- Kolom Kanan: Transaksi Pertama & Terakhir -->
+                    <div class="col-md-6">
+                        <div class="card border-secondary mb-3">
+                            <div class="card-header bg-light text-dark">Transaksi Pertama</div>
+                            <div class="card-body">
+                                {% if wallet_summary.first_transaction %}
+                                    <p><strong>Sender:</strong> {{ wallet_summary.first_transaction[0] }}</p>
+                                    <p><strong>Receiver:</strong> {{ wallet_summary.first_transaction[1] }}</p>
+                                    <p><strong>Value:</strong> {{ wallet_summary.first_transaction[2] }} ETH</p>
+                                    <p><strong>Timestamp:</strong> {{ wallet_summary.first_transaction[3] }}</p>
+                                {% else %}
+                                    <p class="text-muted">Belum ada transaksi.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+        
+                        <div class="card border-secondary mb-3">
+                            <div class="card-header bg-light text-dark">Transaksi Terakhir</div>
+                            <div class="card-body">
+                                {% if wallet_summary.last_transaction %}
+                                    <p><strong>Sender:</strong> {{ wallet_summary.last_transaction[0] }}</p>
+                                    <p><strong>Receiver:</strong> {{ wallet_summary.last_transaction[1] }}</p>
+                                    <p><strong>Value:</strong> {{ wallet_summary.last_transaction[2] }} ETH</p>
+                                    <p><strong>Timestamp:</strong> {{ wallet_summary.last_transaction[3] }}</p>
+                                {% else %}
+                                    <p class="text-muted">Belum ada transaksi.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card border-secondary mb-3">
+            <div class="card-header bg-light text-dark">
+                Status Wallet: <strong>{{ wallet_address }}</strong>
+            </div>
+
+            <div class="card-body pb-2">
+                <ul class="list-group">
+                    <li class="list-group-item">
+                        {% if blacklist_interactions %}
+                            <span class="text-danger">⚠️ Wallet ini memiliki transaksi dengan wallet yang termasuk blacklist!</span>
+                        {% else %}
+                            Tidak ada interaksi dengan wallet blacklist.
+                        {% endif %}
+                    </li>                   
+                    <li class="list-group-item">
+                        {% if risky_interactions %}
+                            <span class="text-danger">⚠️ Wallet ini memiliki transaksi dengan wallet berisiko tinggi!</span>
+                        {% else %}
+                            Tidak ada transaksi dengan wallet berisiko tinggi.
+                        {% endif %}
+                    </li>
+                    <li class="list-group-item">
+                        {% if recurring_pattern %}
+                            <span class="text-warning">⚠️ {{ recurring_pattern }}</span>
+                        {% else %}
+                            Tidak ada pola transaksi rutin yang terdeteksi.
+                        {% endif %}
+                    </li>
+                    <li class="list-group-item">
+                        {% if high_frequency_tx %}
+                            <span class="text-warning">Wallet ini memiliki transaksi frekuensi tinggi dalam 1 jam terakhir!</span>
+                        {% else %}
+                            Tidak ada transaksi frekuensi tinggi dalam 1 jam terakhir.
+                        {% endif %}
+                    </li>
+                </ul>
+            </div>
+            {% if risky_interactions or blacklist_interactions or recurring_pattern or high_frequency_tx %}
+            <div class="text-center pb-2">
+                <a href="{{ url_for('aml.advance_analysis', search=wallet) }}" class="btn btn-primary" >
+                    🔍 Lihat Analisis Lanjutan
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        
+        {% endif %}
+
+        <!-- Data Analisis -->
+        {% if top_transactions %}
+        <div class="card border-secondary mb-4">
+            <div class="card-header bg-light text-dark">
+                Top 3 Transaksi Terbesar
+            </div>
+            <div class="card-body table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Sender</th>
+                            <th>Receiver</th>
+                            <th>Value (ETH)</th>
+                            <th>Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for tx in top_transactions %}
+                        <tr>
+                            <td>{{ tx[1] }}</td>
+                            <td>{{ tx[2] }}</td>
+                            <td>{{ tx[3] }}</td>
+                            <td>{{ tx[4] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>        
+
+        <!-- Chart.js Library -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+        <!-- Top 3 Frequent Receivers -->
+        <div class="card border-secondary mb-4">
+            <div class="card-header bg-light text-dark">
+                Top 3 Frequent Receivers
+            </div>
+            <div class="card-body">
+                {% if top_receivers %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <canvas id="receiversChart"></canvas>
+                    </div>
+                    <div class="col-md-6 table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Address</th>
+                                    <th>Received Transactions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for receiver in top_receivers %}
+                                <tr>
+                                    <td>{{ receiver[0] }}</td>
+                                    <td>{{ receiver[1] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-muted">Tidak ada data receiver.</p>
+                {% endif %}
+            </div>
+        </div>        
+
+        <!-- Top 3 Frequent Senders -->
+        <div class="card border-secondary mb-4">
+            <div class="card-header bg-light text-dark">
+                Top 3 Frequent Senders
+            </div>
+            <div class="card-body">
+                {% if top_senders %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <canvas id="sendersChart"></canvas>
+                    </div>
+                    <div class="col-md-6 table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Address</th>
+                                    <th>Sent Transactions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for sender in top_senders %}
+                                <tr>
+                                    <td>{{ sender[0] }}</td>
+                                    <td>{{ sender[1] }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-muted">Tidak ada data sender.</p>
+                {% endif %}
+            </div>
+        </div>        
+
+        <!-- Action Buttons -->
+        <div class="button-container d-flex gap-2 mt-4">
+            <form method="GET" action="{{ url_for('aml.transaction_graph') }}">
+                <input type="hidden" name="search" value="{{ wallet }}">
+                <button type="submit" class="btn btn-success">Analisis Grafik</button>
+            </form>
+
+            <form method="GET" action="{{ url_for('aml.check_darkweb') }}">
+                <input type="hidden" name="search" value="{{ wallet }}">
+                <button type="submit" class="btn btn-danger">Check Dark Web</button>
+            </form>
+        </div>
+        {% endif %}
+
+    {% endif %}
+
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                var receiverLabels = {{ top_receivers | map(attribute=0) | list | tojson | safe}};
+                var receiverData = {{ top_receivers | map(attribute=1) | list | tojson | safe}};
+                var senderLabels = {{ top_senders | map(attribute=0) | list | tojson | safe}};
+                var senderData = {{ top_senders | map(attribute=1) | list | tojson | safe}};
+        
+                if (receiverLabels.length > 0 && document.getElementById("receiversChart")) {
+                    var ctxReceivers = document.getElementById("receiversChart").getContext("2d");
+                    new Chart(ctxReceivers, {
+                        type: "doughnut", /* bisa ganti ke "bar", "pie" atau "doughnut" */
+                        data: {
+                            labels: receiverLabels,
+                            datasets: [{
+                                label: "Top 3 Frequent Receivers",
+                                data: receiverData,
+                                backgroundColor: ["#FF6384", "#36A2EB", "#FFCE56"]
+                            }]
+                        }
+                    });
+                }
+            
+                if (senderLabels.length > 0 && document.getElementById("sendersChart")) {
+                    var ctxSenders = document.getElementById("sendersChart").getContext("2d");
+                    new Chart(ctxSenders, {
+                        type: "doughnut",
+                        data: {
+                            labels: senderLabels,
+                            datasets: [{
+                                label: "Top 3 Frequent Senders",
+                                data: senderData,
+                                backgroundColor: ["#4BC0C0", "#9966FF", "#FF9F40"]
+                            }]
+                        }
+                    });
+                }
+            });
+        </script>
+        <script>
+            document.getElementById("checkDarkWeb").addEventListener("click", function () {
+                let wallet = document.getElementById("wallet_address").value;
+                fetch(`/check_darkweb?wallet=${wallet}`)
+                .then(response => response.json())
+                .then(data => {
+                    let resultDiv = document.getElementById("darkWebResults");
+                    if (data.results && data.results.length > 0) {
+                        let html = "<h4>🚨 Wallet ditemukan di dark web!</h4><ul>";
+                        data.results.forEach(item => {
+                            html += `<li><a href="${item.url}" target="_blank">${item.title}</a></li>`;
+                        });
+                        html += "</ul>";
+                        resultDiv.innerHTML = html;
+                    } else {
+                        resultDiv.innerHTML = "<p>✅ Tidak ada indikasi wallet ini di dark web.</p>";
+                    }
+                });
+            });
+        </script>
+</div>
+{% endblock %}
