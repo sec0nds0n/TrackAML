@@ -2,6 +2,7 @@ import json
 from flask import Blueprint, request, abort, make_response
 from flask_restx import Api, Resource, Namespace, fields
 from .users import api as ns_users
+from .auth import api as ns_auth
 
 from ..services.transaction_service import (
     get_high_risk_address_count,
@@ -243,3 +244,4 @@ api.add_namespace(ns_wallets)
 api.add_namespace(ns_search)
 api.add_namespace(ns_darkweb)
 api.add_namespace(ns_users)
+api.add_namespace(ns_auth)
