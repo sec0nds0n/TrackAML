@@ -1,0 +1,19 @@
+import requests
+
+@app.route('/fetch_transactions', methods=['POST'])
+def fetch_transactions():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    wallet_address = request.form['wallet']
+    etherscan_api_key = "ASPU7NEQSHWF5A7GH12FH5SS9Y4GRZXI4X"
+    url = f"https://api.etherscan.io/api?module=account&action=txlist&address={wallet_address}&sort=asc&apikey={etherscan_api_key}"
+
+    response = requests.get(url).json()
+
+    if response.get("status") != "1" or "result" not in response:
+        return "⚠️ Gagal mengambil data dari Etherscan."
+
+    transactions = response["result"]
+    
+    return render_template('transactions.html', transactions=transactions, wallet=wallet_address)

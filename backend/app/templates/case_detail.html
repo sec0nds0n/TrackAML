@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Case #{{ case.id }} Details{% endblock %}
+
+{% block content %}
+<h2>📄 Case #{{ case.id }} – {{ case.case_type }}</h2>
+
+<ul class="list-group mb-4">
+  <li class="list-group-item"><strong>Status:</strong> {{ case.status }}</li>
+  <li class="list-group-item"><strong>Reference ID:</strong> {{ case.reference_id }}</li>
+  <li class="list-group-item"><strong>Reason:</strong> {{ case.reason or '-' }}</li>
+  <li class="list-group-item"><strong>Source:</strong> {{ case.source or '-' }}</li>
+  <li class="list-group-item"><strong>Tags:</strong> {{ case.tags | join(', ') if case.tags else '-' }}</li>
+  <li class="list-group-item"><strong>Assigned To:</strong> 
+    {% if case.assignments %}
+      {{ case.assignments | map(attribute='label') | join(', ') }}
+    {% else %}
+      -
+    {% endif %}
+  </li>
+  <li class="list-group-item"><strong>Created:</strong> {{ case.created_at }}</li>
+  <li class="list-group-item"><strong>Updated:</strong> {{ case.updated_at }}</li>
+</ul>
+
+<a href="{{ url_for('aml.cases_page') }}" class="btn btn-secondary">← Back to Cases</a>
+<a href="{{ url_for('aml.edit_case', case_id=case.id) }}" class="btn btn-primary">Edit</a>
+<a href="{{ url_for('aml.generate_case_report', case_id=case.id) }}" class="btn btn-success">
+  Download PDF Report
+</a>
+{% endblock %}

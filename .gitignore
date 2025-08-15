@@ -1,0 +1,44 @@
+__pycache__/
+*.pyc
+*.pyo
+venv/
+instance/
+.env
+config.pyroot@trackaml:~/TrackAML/backend# cat ../.gitignore 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# Flask
+instance/
+.env
+.env.*
+
+# Virtual environment
+venv/
+ENV/
+env/
+*.egg-info/
+
+# IDEs
+.vscode/
+.idea/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Models or heavy data
+backend/models/
+models/
+*.sql
+
+# Logs or temporary files
+*.log
+*.tmp
+backend/flask_session/
+trackaml_backup.sql

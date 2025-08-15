@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h3>Analisis Jalur ke Blacklisted Wallet</h3>
+    <p><strong>Target Wallet:</strong> {{ wallet }}</p>
+
+    {% if connections %}
+    <div class="table-responsive">
+        <table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Blacklisted Wallet</th>
+                    <th>Related Wallet</th>
+                    <th>Hops</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for conn in connections %}
+                <tr>
+                    <td>{{ conn.blacklist_source }}</td>
+                    <td>{{ conn.related_wallet }}</td>
+                    <td>{{ conn.hops }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info">Tidak ditemukan jalur ke wallet blacklist dalam 3 hop.</div>
+    {% endif %}
+</div>
+{% endblock %}

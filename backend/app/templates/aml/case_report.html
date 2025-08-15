@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Case #{{ case.id }} Report</title>
+  <style>
+    body { font-family: sans-serif; margin: 2em; }
+    h2 { text-align: center; }
+    ul { list-style: none; padding: 0; }
+    li { margin-bottom: 0.7em; }
+    .meta { color: #666; font-size: 0.9em; text-align: right; }
+    .label { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>Case #{{ case.id }} – {{ case.case_type }}</h2>
+  <p class="meta">Generated: {{ generated_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</p>
+  <ul>
+    <li><span class="label">Status:</span> {{ case.status }}</li>
+    <li><span class="label">Reference ID:</span> {{ case.reference_id }}</li>
+    <li><span class="label">Reason:</span> {{ case.reason or '-' }}</li>
+    <li><span class="label">Source:</span> {{ case.source or '-' }}</li>
+    <li><span class="label">Tags:</span> {{ case.tags | join(', ') if case.tags else '-' }}</li>
+    <li><span class="label">Assigned To:</span> 
+      {% if case.assignments %}
+        {{ case.assignments | map(attribute='label') | join(', ') }}
+      {% else %}
+        -
+      {% endif %}
+    </li>
+    <li><span class="label">Created:</span> {{ case.created_at }}</li>
+    <li><span class="label">Updated:</span> {{ case.updated_at }}</li>
+  </ul>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<h4>Deteksi Anomali Transaksi</h4>
+{% for wallet, tx_list in anomalies.items() %}
+    <div class="card mb-3">
+        <div class="card-header">{{ wallet }}</div>
+        <div class="card-body">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Tx Hash</th>
+                        <th>Sender</th>
+                        <th>Receiver</th>
+                        <th>Value</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in tx_list %}
+                    <tr>
+                        <td>{{ tx.tx_hash }}</td>
+                        <td>{{ tx.sender }}</td>
+                        <td>{{ tx.receiver }}</td>
+                        <td>{{ tx.value }}</td>
+                        <td>{{ tx.timestamp }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+{% endfor %}

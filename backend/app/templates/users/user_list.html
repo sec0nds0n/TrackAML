@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Daftar User{% endblock %}
+{% block content %}
+<h3>Daftar Pengguna</h3>
+<table class="table table-striped">
+  <thead><tr><th>ID</th><th>Username</th><th>Dibuat</th><th>Aksi</th></tr></thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u[0] }}</td>
+      <td>{{ u[1] }}</td>
+      <td>{{ u[2] }}</td>
+      <td>
+        <a class="btn btn-sm btn-primary" href="{{ url_for('users.edit_user', user_id=u[0]) }}">Edit</a>
+        <a class="btn btn-sm btn-danger" href="{{ url_for('users.delete_user', user_id=u[0]) }}"
+           onclick="return confirm('Yakin ingin hapus user ini?')">Hapus</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

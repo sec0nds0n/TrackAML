@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card p-4">
+  <h4>Data Sudah Pernah Diambil</h4>
+  <p>Transaksi untuk wallet <strong>{{ wallet_address }}</strong> sudah pernah diambil pada <strong>{{ last_fetched }}</strong>.</p>
+  <p>Apakah Anda ingin memperbarui data transaksi sekarang?</p>
+
+  <form method="POST" action="{{ url_for('fetch_transactions') }}">
+    <input type="hidden" name="wallet" value="{{ wallet_address }}">
+    <input type="hidden" name="force_update" value="yes">
+    <button class="btn btn-primary" type="submit">✅ Ya, update sekarang</button>
+    <a href="{{ url_for('wallet') }}" class="btn btn-secondary">❌ Batal</a>
+  </form>
+</div>
+{% endblock %}

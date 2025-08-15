@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Suspicious Wallets – AML Dashboard{% endblock %}
+
+{% block content %}
+<h2>Suspicious Wallets</h2>
+{% if not pending %}
+  <div class="alert alert-success">
+    🎉 Tidak ada suspicious wallet yang belum dicatat sebagai case.
+  </div>
+{% endif %}
+<div class="table-responsive">
+  <table class="table table-bordered table-hover" id="wallet-table">
+    <thead class="table-secondary">
+      <tr>
+        <th>Select</th>
+        <th>Wallet Address</th>
+        <th>Source</th>
+        <th>Category</th>
+        <th>Reason</th>
+        <th>Added On</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for w in pending %}
+        <tr>
+          <td><input type="checkbox" class="blacklist-checkbox" data-id="{{ w.address }}"></td>
+          <td>{{ w.address }}</td>
+          <td>{{ w.source or '-' }}</td>
+          <td>{{ w.category or '-' }}</td>
+          <td>{{ w.reason or '-' }}</td>
+          <td>{{ w.added_on.strftime('%Y-%m-%d %H:%M:%S') if w.added_on else '-' }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('aml.create_case_wallet') }}">
+              <input type="hidden" name="wallet_address" value="{{ w.address }}">
+              <button type="submit" class="btn btn-sm btn-success">
+                Create Case
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

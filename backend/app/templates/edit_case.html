@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Edit Case #{{ case.id }}{% endblock %}
+
+{% block content %}
+<h2>Edit Case #{{ case.id }}</h2>
+<form method="POST">
+  <div class="mb-3">
+    <label class="form-label">Description</label>
+    <textarea id="desc" name="description" class="form-control" rows="5">{{ case.description or '' }}</textarea>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Status</label>
+    <select id="status" name="status" class="form-select">
+        {% for option in status_options %}
+        <option value="{{ option }}" {% if case.status == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+    </select>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Reason</label>
+    <input type="text" id="reason" name="reason" class="form-control" value="{{ case.reason or '' }}">
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Source</label>
+    <input type="text" id="source" name="source" class="form-control" value="{{ case.source or '' }}">
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Tags (comma separated)</label>
+    <input type="text" id="tags" name="tags" class="form-control" value="{{ case.tags | join(', ') if case.tags else '' }}">
+  </div>
+
+  <button type="submit" class="btn btn-success">💾 Save</button>
+  <a href="{{ url_for('aml.cases_page') }}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

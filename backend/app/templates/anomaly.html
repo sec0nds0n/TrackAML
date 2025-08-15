@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Anomaly – AML Dashboard{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <h2>Anomaly Transactions</h2>
+  <div class="table-responsive">
+    <button class="btn btn-success mb-2" onclick="bulkCreateCase('transaction')">Create Case for Selected</button>
+    <table class="table table-bordered table-hover" id="anomaly-table">
+      <thead class="table-secondary">
+        <tr>
+          <th>Select</th>
+          <th>Transaction Hash</th>
+          <th>Value</th>
+          <th>Timestamp</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="mb-4">
+  <h2>Blacklisted Wallets</h2>
+  <div class="table-responsive">
+    <button id="bulk-transactions-btn" class="btn btn-success mb-2" onclick="bulkCreateCase('transaction')">Create Case for Selected</button>
+    <table class="table table-bordered table-hover" id="blacklist-table">
+      <thead class="table-secondary">
+        <tr>
+          <th>Select</th>
+          <th>Wallet Address</th>
+          <th>Source</th>
+          <th>Category</th>
+          <th>Reason</th>
+          <th>Added On</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  async function loadAnomalyPage() {
+    try {
+      // kita fetch 3 endpoint sekaligus
+      const [resA, resB, resC] = await Promise.all([
+        fetch('/api/anomalies/transactions'),
+        fetch('/api/anomalies/blacklist'),
+        fetch('/api/cases?limit=1000')   // ambil cases untuk cek reference_id
+      ]);
+      if (!resA.ok) throw new Error('Failed to fetch anomaly transactions');
+      if (!resB.ok) throw new Error('Failed to fetch blacklisted wallets');
+      if (!resC.ok) throw new Error('Failed to fetch cases');
+
+      const anomalies = await resA.json();
+      const blacklists = await resB.json();
+      const cases      = await resC.json();
+
+      // bangun set reference_id dari cases
+      const casedRefs = new Set(cases.map(c => c.reference_id));
+
+      // filter anomalies yang belum cased
+      const pendingAnomalies = anomalies.filter(
+        tx => !casedRefs.has(tx.tx_hash)
+      );
+
+      // render tabel anomaly
+      const anomalyBody = document.querySelector('#anomaly-table tbody');
+      anomalyBody.innerHTML = '';
+      pendingAnomalies.forEach(tx => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input type="checkbox" class="anomaly-checkbox" data-id="${tx.tx_hash}"></td>
+          <td><a href="https://etherscan.io/tx/${tx.tx_hash}" target="_blank">${tx.tx_hash}</a></td>
+          <td>${tx.value}</td>
+          <td>${new Date(tx.timestamp).toLocaleString()}</td>
+          <td>
+            <button class="btn btn-sm btn-primary"
+                    onclick="createCase('transaction','${tx.tx_hash}')">
+              Create Case
+            </button>
+          </td>
+        `;
+        anomalyBody.appendChild(tr);
+      });
+
+      // blacklist-table tetap sama seperti sebelumnya
+      const blacklistBody = document.querySelector('#blacklist-table tbody');
+      blacklistBody.innerHTML = '';
+      blacklists.forEach(w => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><input type="checkbox" class="blacklist-checkbox" data-id="${w.address}"></td>
+          <td>${w.address}</td>
+          <td>${w.source || '-'}</td>
+          <td>${w.category || '-'}</td>
+          <td>${w.reason || '-'}</td>
+          <td>${new Date(w.added_on).toLocaleString()}</td>
+          <td>
+            <button class="btn btn-sm btn-primary"
+                    onclick="createCase('wallet','${w.address}')">
+              Create Case
+            </button>
+          </td>
+        `;
+        blacklistBody.appendChild(tr);
+      });
+
+    } catch (err) {
+      console.error(err);
+      alert('Error loading anomaly data');
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', loadAnomalyPage);
+</script>
+
+<script>
+  async function createCase(type, identifier) {
+    const res = await fetch('/api/cases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, reference_id: identifier })
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to create case');
+    }
+
+    console.log(`Case created for ${type}: ${identifier}`);
+  }
+
+  async function bulkCreateCase(type) {
+    const button = document.getElementById(`bulk-${type}s-btn`);
+    button.disabled = true;
+    button.textContent = 'Processing...';
+    const selector = type === 'transaction' ? '.anomaly-checkbox' : '.blacklist-checkbox';
+    const checkboxes = document.querySelectorAll(selector + ':checked');
+
+    if (checkboxes.length === 0) {
+      alert('No items selected');
+      return;
+    }
+
+    const identifiers = Array.from(checkboxes).map(cb => cb.dataset.id);
+    let success = 0, failed = 0;
+
+    for (const id of identifiers) {
+      try {
+        await createCase(type, id);
+        success++;
+      } catch (err) {
+        console.error(err);
+        failed++;
+      }
+    }
+
+    alert(`Created ${success} case(s). ${failed > 0 ? failed + ' failed.' : ''}`);
+    button.disabled = false;
+    button.textContent = 'Create Case for Selected';
+  }
+</script>
+
+{% endblock %}

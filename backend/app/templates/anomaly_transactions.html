@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Anomaly Transactions – AML Dashboard{% endblock %}
+
+{% block content %}
+<h2>Anomaly Transactions</h2>
+<div class="table-responsive">
+  <table class="table table-bordered table-hover" id="anomaly-table">
+    <thead class="table-secondary">
+      <tr>
+        <th>Select</th>
+        <th>Transaction Hash</th>
+        <th>Value</th>
+        <th>Timestamp</th>
+        <th>Detector</th>
+        <th>Reason</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tx in pending %}
+      <tr>
+        <td><input type="checkbox" class="anomaly-checkbox" data-id="{{ tx.tx_hash }}"></td>
+        <td><a href="https://etherscan.io/tx/{{ tx.tx_hash }}" target="_blank">{{ tx.tx_hash }}</a></td>
+        <td>{{ tx.value }}</td>
+        <td>{{ tx.timestamp }}</td>
+        <td>{{ tx.detector or '-' }}</td>
+        <td>{{ tx.reason or '-' }}</td>
+        <td>
+          <form method="POST" action="{{ url_for('aml.create_case_transaction') }}">
+            <input type="hidden" name="tx_hash" value="{{ tx.tx_hash }}">
+            <button type="submit" class="btn btn-sm btn-success">
+              Create Case
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+
+  </table>
+</div>
+{% endblock %}
