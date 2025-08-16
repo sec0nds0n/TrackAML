@@ -20,6 +20,7 @@ def create_app():
     # SECRET_KEY konsisten
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', app.config.get('SECRET_KEY') or 'dev-secret-trackaml')
     app.secret_key = app.config['SECRET_KEY']
+    os.makedirs(app.config['UPLOAD_DIR'], exist_ok=True)
 
     # CORS + credentials
     CORS(app,

@@ -2,6 +2,7 @@ from flask_restx import Namespace, Resource, fields
 from flask import request
 from ..database import get_db_connection
 from ..utils import jwt_required, jwt_roles_required, roles_required
+from psycopg2.extras import RealDictCursor
 
 # Define the Namespace for User APIs
 api = Namespace(
@@ -125,3 +126,35 @@ class UserResource(Resource):
         cur.close()
         conn.close()
         return {'status': 'ok'}
+    
+@api.route('/search')
+class UserSearch(Resource):
+    def get(self):
+        q = request.args.get("q", "")
+        q = q.strip() if q is not None else ""
+        limit = 10
+
+        with get_db_connection() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            if not q:  # izinkan '@' doang → tampilkan 10 teratas
+                cur.execute("""
+                    SELECT id, username
+                      FROM users
+                     ORDER BY username
+                     LIMIT %s
+                """, (limit,))
+                rows = cur.fetchall()
+                for r in rows:
+                    r["email"] = None
+                return rows, 200
+
+            cur.execute("""
+                SELECT id, username
+                  FROM users
+                 WHERE username ILIKE %s
+                 ORDER BY username
+                 LIMIT %s
+            """, (f"%{q}%", limit))
+            rows = cur.fetchall()
+            for r in rows:
+                r["email"] = None
+            return rows, 200

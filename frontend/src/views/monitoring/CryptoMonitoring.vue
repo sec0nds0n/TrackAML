@@ -1,8 +1,10 @@
 <script setup>
+import * as api from '@/services/api'
 import { useCryptoMonitoring } from '@/composables/useCryptoMonitoring';
 import Button from 'primevue/button';
 import Chart from 'primevue/chart';
-import Chip from 'primevue/chip';
+import Chips from 'primevue/chips';
+import Checkbox from 'primevue/checkbox';
 import Column from 'primevue/column';
 import DataTable from 'primevue/datatable';
 import Dialog from 'primevue/dialog';
@@ -17,8 +19,6 @@ import Textarea from 'primevue/textarea';
 import { ref, onMounted, computed, reactive } from 'vue';
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
-import * as api from '@/services/api'
-
 
 // Use the composable
 const {
@@ -242,7 +242,12 @@ const formatNumber = (n) => (Number.isFinite(+n) ? (+n).toLocaleString() : '—'
 const showCreateCaseModal = ref(false)
 const createLoading = ref(false)
 const createError = ref('')
-const severityOptions = ['low', 'medium', 'high', 'critical']
+
+const severityOptions = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+const priorityOptions   = ['P1','P2','P3','P4']
+const tlpOptions        = ['WHITE','GREEN','AMBER','RED']
+const visibilityOptions = ['internal','external']
+
 const typeOptions = [
   { label: 'Wallet', value: 'wallet' },
   { label: 'Transaction', value: 'transaction' }
@@ -251,17 +256,18 @@ const typeOptions = [
 const caseForm = reactive({
   type: 'wallet',
   reference_id: '',
+  title: '',
+  priority: 'P3',
+  typology: '',
   severity: 'medium',
   reason: '',
   notes: '',
-  // metadata opsional
-  payload: {
-    source: null,
-    category: null,
-    added_on: null,
-    extra: null
-  },
-  assignToMe: true          // kalau true → pakai /cases/assign (idempotent)
+  tags: [],
+  tlp: 'GREEN',
+  visibility: 'internal',
+  sla_due_at: null,
+  payload: { source: null, category: null, added_on: null, extra: null },
+  assignToMe: true,
 })
 
 const metricCards = computed(() => [
@@ -326,14 +332,18 @@ function viewTransactionDetails(tx) {
 function resetCaseForm () {
   caseForm.type = 'wallet'
   caseForm.reference_id = ''
+  caseForm.title = ''
+  caseForm.priority = 'P3'
+  caseForm.typology = ''
   caseForm.severity = 'medium'
   caseForm.reason = ''
   caseForm.notes = ''
-  caseForm.payload.source = null
-  caseForm.payload.category = null
-  caseForm.payload.added_on = null
-  caseForm.payload.extra = null
-  caseForm.assignToMe = true
+  caseForm.tags = caseForm.tags || []
+  caseForm.tlp = 'GREEN'
+  caseForm.visibility = 'internal'
+  caseForm.sla_due_at = null
+  caseForm.payload = { source: null, category: null, added_on: null, extra: null }
+  caseForm.assignToMe ??= true
   createError.value = ''
 }
 
@@ -345,6 +355,7 @@ function openCreateCaseFromWallet(row) {
   caseForm.payload.source = row?.source ?? null
   caseForm.payload.category = row?.category ?? null
   caseForm.payload.added_on = row?.added_on ?? null
+  caseForm.title = `Wallet ${String(row?.address || '').slice(0,6)}…`
   caseForm.reason = row?.reason || row?.category || 'Flagged suspicious wallet'
   showCreateCaseModal.value = true
 }
@@ -357,6 +368,7 @@ function openCreateCaseFromTx(row) {
   caseForm.payload.source = row?.detector ?? 'anomaly'
   caseForm.payload.category = row?.category ?? null
   caseForm.payload.added_on = row?.timestamp ?? null
+  caseForm.title = `Tx ${String(caseForm.reference_id).slice(0,10)}…`
   caseForm.reason = row?.reason || row?.detector || 'Anomalous transaction'
   showCreateCaseModal.value = true
 }
@@ -365,48 +377,60 @@ function openCreateCaseFromTx(row) {
 const isValid = computed(() =>
   !!caseForm.type &&
   !!caseForm.reference_id &&
-  severityOptions.includes(caseForm.severity)
+  severityOptions.includes(caseForm.severity) &&
+  priorityOptions.includes(caseForm.priority) &&
+  tlpOptions.includes(caseForm.tlp) &&
+  visibilityOptions.includes(caseForm.visibility)
 )
 
 async function submitCreateCase () {
   createError.value = ''
   if (!isValid.value) {
-    createError.value = 'Lengkapi type, reference, dan severity.'
+    createError.value = 'Lengkapi field wajib (type, reference, severity, priority, tlp, visibility).'
     return
   }
   createLoading.value = true
   try {
+    // format SLA → ISO; kalau null biarkan undefined
+    const slaISO = caseForm.sla_due_at ? new Date(caseForm.sla_due_at).toISOString() : undefined
+
+    const common = {
+      title: caseForm.title || undefined,
+      priority: caseForm.priority,
+      typology: caseForm.typology || undefined,
+      severity: caseForm.severity,
+      reason: caseForm.reason || undefined,
+      tags: caseForm.tags?.length ? caseForm.tags : undefined,
+      tlp: caseForm.tlp,
+      visibility: caseForm.visibility,
+      sla_due_at: slaISO,
+      payload: { ...caseForm.payload, notes: caseForm.notes || undefined }
+    }
+
     let res
     if (caseForm.assignToMe) {
-      // idempotent + langsung assign ke diri sendiri (backend harus kenal user dari session)
-      res = await api.assignEntityToCase({
-        entity_type: caseForm.type === 'transaction' ? 'tx' : 'wallet',
-        entity_key: caseForm.reference_id,
-        severity: caseForm.severity,
-        reason: caseForm.reason,
-        payload: { ...caseForm.payload, notes: caseForm.notes }
-      })
-      const caseId = res?.case_id || res?.id
-      toast.add({ severity: 'success', summary: 'Case prepared', detail: `#${caseId}`, life: 2200 })
-      showCreateCaseModal.value = false
-      await router.push(`/monitoring/cases/${caseId}`)
-    } else {
-      // buat case baru tanpa auto-assign
+      // gunakan /api/cases agar owner_id otomatis = user saat ini
       res = await api.createCase({
         type: caseForm.type,
         reference_id: caseForm.reference_id,
-        severity: caseForm.severity,
-        reason: caseForm.reason,
-        payload: { ...caseForm.payload, notes: caseForm.notes }
+        assignToMe: true,
+        ...common
       })
-      const caseId = res?.case_id || res?.id
-      toast.add({ severity: 'success', summary: 'Case created', detail: `#${caseId}`, life: 2200 })
-      showCreateCaseModal.value = false
-      await router.push(`/monitoring/cases/${caseId}`)
+    } else {
+      // gunakan endpoint idempotent saat tidak ingin auto-assign
+      res = await api.assignEntityToCase({
+        entity_type: caseForm.type === 'transaction' ? 'tx' : 'wallet',
+        entity_key: caseForm.reference_id,
+        ...common
+      })
     }
+
+    const caseId = res?.case_id || res?.id
+    showCreateCaseModal.value = false
+    // redirect ke detail
+    await router.push(`/monitoring/cases/${caseId}`)
   } catch (e) {
     createError.value = e?.data?.message || e?.message || 'Create Case failed'
-    toast.add({ severity: 'error', summary: 'Create Case failed', detail: createError.value, life: 4000 })
   } finally {
     createLoading.value = false
   }
@@ -885,63 +909,82 @@ onMounted(() => {
     </Dialog>
 
     <!-- === MODAL CREATE CASE === -->
-    <Dialog v-model:visible="showCreateCaseModal"
-            modal
-            header="Create Case"
-            :style="{ width: '520px' }">
+    <Dialog v-model:visible="showCreateCaseModal" modal header="Create Case"
+            :style="{ width: '760px' }"
+            :breakpoints="{ '960px':'85vw', '641px':'98vw' }">
         <div class="p-fluid formgrid grid gap-3">
-            <div class="field col-12">
+            <div class="field col-12 md:col-4">
             <label class="block text-sm mb-2">Type</label>
-            <Dropdown :options="typeOptions" optionLabel="label" optionValue="value"
-                        v-model="caseForm.type" class="w-full" />
+            <Dropdown v-model="caseForm.type" :options="[{label:'Wallet',value:'wallet'},{label:'Transaction',value:'transaction'}]" optionLabel="label" optionValue="value" class="w-full"/>
+            </div>
+            <div class="field col-12 md:col-8">
+            <label class="block text-sm mb-2">Reference ID</label>
+            <InputText v-model="caseForm.reference_id" class="w-full" placeholder="Wallet address atau Tx hash"/>
             </div>
 
             <div class="field col-12">
-            <label class="block text-sm mb-2">Reference ID<span class="text-red-500">*</span></label>
-            <InputText v-model="caseForm.reference_id" placeholder="Wallet address atau Tx hash" />
+            <label class="block text-sm mb-2">Title</label>
+            <InputText v-model="caseForm.title" class="w-full" placeholder="Judul singkat case"/>
+            </div>
+
+            <div class="field col-12 md:col-4">
+            <label class="block text-sm mb-2">Severity</label>
+            <Dropdown v-model="caseForm.severity" :options="severityOptions" class="w-full"/>
+            </div>
+            <div class="field col-12 md:col-4">
+            <label class="block text-sm mb-2">Priority</label>
+            <Dropdown v-model="caseForm.priority" :options="priorityOptions" class="w-full"/>
+            </div>
+            <div class="field col-12 md:col-4">
+            <label class="block text-sm mb-2">Typology</label>
+            <InputText v-model="caseForm.typology" class="w-full" placeholder="mixer / sanctions / fraud ..."/>
             </div>
 
             <div class="field col-12 md:col-6">
-            <label class="block text-sm mb-2">Severity<span class="text-red-500">*</span></label>
-            <Dropdown :options="severityOptions" v-model="caseForm.severity" class="w-full" />
+            <label class="block text-sm mb-2">Reason</label>
+            <InputText v-model="caseForm.reason" class="w-full" placeholder="Alasan / indikator"/>
             </div>
-
-            <div class="field col-12 md:col-6">
-                <label class="block text-sm mb-2">Reason</label>
-                <InputText v-model="caseForm.reason" class="w-full" placeholder="Alasan / indikator" />
-            </div>
-
             <div class="field col-12 md:col-6">
                 <label class="block text-sm mb-2">Notes</label>
-                <Textarea v-model="caseForm.notes" class="w-full" rows="4" autoResize placeholder="Catatan tambahan (opsional)" />
-            </div>
-
-            <!-- Opsional metadata -->
-            <div class="field col-12 md:col-6">
-            <label class="block text-sm mb-2">Source</label>
-            <InputText v-model="caseForm.payload.source" placeholder="mis: blacklist, detector" />
+                <Textarea v-model="caseForm.notes" class="w-full" rows="3" autoResize/>
             </div>
             <div class="field col-12 md:col-6">
-            <label class="block text-sm mb-2">Category</label>
-            <InputText v-model="caseForm.payload.category" placeholder="mis: phishing, mixer, dll" />
+                <label class="block text-sm mb-2">Tags</label>
+                <Chips
+                    v-model="caseForm.tags"
+                    separator=","
+                    class="w-full"
+                    inputClass="w-full"
+                    placeholder="Ketik lalu Enter/koma untuk tambah tag" />
+            </div>
+            <div class="field col-6 md:col-3">
+            <label class="block text-sm mb-2">TLP</label>
+            <Dropdown v-model="caseForm.tlp" :options="tlpOptions" class="w-full"/>
+            </div>
+            <div class="field col-6 md:col-3">
+            <label class="block text-sm mb-2">Visibility</label>
+            <Dropdown v-model="caseForm.visibility" :options="visibilityOptions" class="w-full"/>
             </div>
 
+            <div class="field col-12 md:col-6">
+            <label class="block text-sm mb-2">SLA Due</label>
+            <Calendar v-model="caseForm.sla_due_at" showTime hourFormat="24" showIcon dateFormat="yy-mm-dd" class="w-full"/>
+            </div>
             <div class="field col-12">
                 <div class="flex items-center gap-2">
                     <Checkbox v-model="caseForm.assignToMe" :binary="true" inputId="assignme" />
-                    <label for="assignme">Assign ke saya (idempotent)</label>
+                    <label for="assignme">Assign ke saya</label>
                 </div>
             </div>
-
             <div v-if="createError" class="col-12">
             <small class="p-error">{{ createError }}</small>
             </div>
         </div>
 
-    <template #footer>
-        <Button label="Batal" severity="secondary" text @click="showCreateCaseModal = false" />
-        <Button label="Create Case" :loading="createLoading" :disabled="!isValid" @click="submitCreateCase" />
-    </template>
+        <template #footer>
+            <Button label="Batal" severity="secondary" text @click="showCreateCaseModal=false"/>
+            <Button label="Create Case" :loading="createLoading" :disabled="!isValid" @click="submitCreateCase"/>
+        </template>
     </Dialog>
 </template>
 

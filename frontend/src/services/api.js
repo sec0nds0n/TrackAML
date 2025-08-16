@@ -1,8 +1,7 @@
-// src/services/api.js
 const RAW_BASE = (import.meta.env?.VITE_API_BASE_URL || import.meta.env?.VITE_API_BASE || '');
-const BASE = RAW_BASE.replace(/\/+$/, ''); // info global (tidak dipakai langsung di request)
-
-let CSRF_CACHE = null;
+const DEFAULT_BASE = '/api';
+let BASE = (RAW_BASE || '').trim() || DEFAULT_BASE;
+BASE = BASE.replace(/\/+$/, '');
 
 export async function ensureCsrf() {
   if (CSRF_CACHE) return CSRF_CACHE;
@@ -24,14 +23,49 @@ function ensureLeadingSlash(p) {
 }
 
 // Gabung base + endpoint, sekaligus de-dupe '/api' kalau base sudah mengandung '/api'
-function joinURL(base, endpoint) {
-  const ep = ensureLeadingSlash(endpoint);
-  if (!base) return ep; // same-origin (mis. Vite proxy) → pakai path relatif
-  const b = normalizeBase(base);
-  if (b.endsWith('/api') && ep.startsWith('/api/')) {
-    return b + ep.replace(/^\/api/, '');
+function joinURL(base, path) {
+  const b = (base || '').replace(/\/+$/, '');
+  const p = (path || '').toString();
+  return /^https?:\/\//i.test(p) ? p : `${b}${p.startsWith('/') ? '' : '/'}${p}`;
+}
+
+function readCookie(name) {
+  return document.cookie.split('; ').reduce((acc, c) => {
+    const [k, ...v] = c.split('=');
+    return k === name ? decodeURIComponent(v.join('=')) : acc;
+  }, null);
+}
+
+let CSRF_CACHE = null;
+let CSRF_TS = 0;
+const CSRF_TTL = 5 * 60 * 1000;
+
+export function resetCsrfCache() {
+  CSRF_CACHE = null;
+  CSRF_TS = 0;
+}
+
+async function fetchCsrfToken(force = false) {
+  const now = Date.now();
+  if (!force && CSRF_CACHE && now - CSRF_TS < CSRF_TTL) return CSRF_CACHE;
+
+  // minta token ke backend
+  const res = await fetch(joinURL(BASE, '/auth/csrf'), { credentials: 'include' });
+  let data = {};
+  try { data = await res.json(); } catch {}
+  const token =
+    data.csrf_token ||
+    data.csrf ||
+    data.token ||
+    readCookie('csrf_token') ||      // kalau backend pakai double-submit cookie
+    readCookie('XSRF-TOKEN') ||      // beberapa lib pakai nama ini
+    null;
+
+  if (token) {
+    CSRF_CACHE = token;
+    CSRF_TS = now;
   }
-  return b + ep;
+  return token;
 }
 
 function getCookie(name) {
@@ -107,47 +141,104 @@ class ApiService {
   }
 }
 // wrapper fetch utama
-export async function request(path, { method = 'GET', headers = {}, body, timeout = 15000 } = {}) {
-  const url = path.startsWith('http') ? path : `${BASE}${path.startsWith('/') ? '' : '/'}${path}`;
+export async function request(path, { method = 'GET', headers = {}, body, timeout = 20000 } = {}) {
+  const url = joinURL(BASE, path);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
-
   const finalHeaders = { ...headers };
-
   const isUnsafe = !/^(GET|HEAD|OPTIONS|TRACE)$/i.test(method);
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+
   if (isUnsafe) {
-    const token = await ensureCsrf();
-    if (token) finalHeaders['X-CSRF-Token'] = token; // terima juga 'X-CSRFToken' di backend
-    if (body && typeof body !== 'string' && !finalHeaders['Content-Type']) {
+    const token = await fetchCsrfToken();
+    if (token) {
+      // kirim semua variasi header yang umum
+      finalHeaders['X-CSRF-Token'] = token;
+      finalHeaders['X-CSRFToken'] = token;
+      finalHeaders['X-XSRF-TOKEN'] = token;
+    }
+    if (!isForm && body && typeof body !== 'string' && !finalHeaders['Content-Type']) {
       finalHeaders['Content-Type'] = 'application/json';
     }
   }
 
-  const res = await fetch(url, {
-    method,
-    headers: finalHeaders,
-    body: body && typeof body !== 'string' ? JSON.stringify(body) : body,
-    credentials: 'include',
-    signal: controller.signal,
-  }).finally(() => clearTimeout(timer));
+  const doFetch = async () => {
+    const t = setTimeout(() => controller.abort(), timeout);
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: finalHeaders,
+        body: isForm ? body : (body && typeof body !== 'string' ? JSON.stringify(body) : body),
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      const ct = res.headers.get('content-type') || '';
+      const data = ct.includes('application/json') ? await res.json() : await res.text();
 
-  const contentType = res.headers.get('content-type') || '';
-  const data = contentType.includes('application/json') ? await res.json() : await res.text();
+      if (!res.ok) {
+        const err = new Error((data && data.message) || `HTTP ${res.status}`);
+        err.status = res.status;
+        err.data = data;
+        if (res.status === 401) err.isAuthError = true;
+        throw err;
+      }
+      return data;
+    } finally {
+      clearTimeout(t);
+    }
+  };
 
-  if (!res.ok) {
-    const err = new Error((data && data.message) || `HTTP ${res.status}`);
-    err.status = res.status;
-    err.data = data;
-    if (res.status === 401) err.isAuthError = true;
-    throw err;
+  try {
+    return await doFetch();
+  } catch (e) {
+    // jika CSRF gagal, refresh token & retry sekali
+    const msg = (e?.data && (e.data.message || e.data.error)) || e?.message || '';
+    if (e?.status === 403 && /csrf/i.test(msg)) {
+      resetCsrfCache();
+      const fresh = await fetchCsrfToken(true);
+      if (fresh) {
+        finalHeaders['X-CSRF-Token'] = fresh;
+        finalHeaders['X-CSRFToken'] = fresh;
+        finalHeaders['X-XSRF-TOKEN'] = fresh;
+      }
+      return await doFetch();
+    }
+    throw e;
   }
-  return data;
 }
 
 const api = new ApiService();
 export default api;
-export const createCase = ({ type, reference_id, severity, reason, payload }) =>
-  request('/cases', { method: 'POST', body: { type, reference_id, severity, reason, payload } });
+export const createCase = (body) => request('/cases', { method: 'POST', body });
+export const assignEntityToCase = (body) => request('/cases/assign', { method: 'POST', body });
+export const me = () => request('/auth/me');
+export const login = (credentials) => request('/auth/login', { method: 'POST', body: credentials });
+export const logout = () => request('/auth/logout', { method: 'POST' });
 
-export const assignEntityToCase = ({ entity_type, entity_key, severity, reason, payload }) =>
-  request('/cases/assign', { method: 'POST', body: { entity_type, entity_key, severity, reason, payload } });
+// --- CASE DETAIL ---
+export const getCase = (id) => request(`/cases/${id}`);
+
+// --- COMMENTS ---
+export const getCaseComments = (id) => request(`/cases/${id}/comments`);
+export const addCaseComment = (id, body) =>
+  request(`/cases/${id}/comments`, { method: 'POST', body }); // { body, visibility }
+
+// --- TASKS ---
+export const getCaseTasks = (id) => request(`/cases/${id}/tasks`);
+export const createCaseTask = (id, body) =>
+  request(`/cases/${id}/tasks`, { method: 'POST', body }); // { title, due_at, assignee_id, status }
+export const updateTask = (taskId, body) =>
+  request(`/tasks/${taskId}`, { method: 'PATCH', body });
+export const deleteTask = (taskId) =>
+  request(`/tasks/${taskId}`, { method: 'DELETE' });
+
+// --- ATTACHMENTS (opsional, jika endpoint sudah ada) ---
+export const getCaseAttachments = (id) => request(`/cases/${id}/attachments`);
+export const uploadCaseAttachment = (id, file, meta = {}) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  Object.entries(meta).forEach(([k, v]) => fd.append(k, v ?? ''));
+  // request() sudah mendeteksi FormData (lihat patch di bawah)
+  return request(`/cases/${id}/attachments`, { method: 'POST', body: fd });
+};
+export const searchUsers = (q) =>
+   request(`/users/search?q=${encodeURIComponent(q)}`, { method: 'GET' });

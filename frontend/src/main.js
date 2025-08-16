@@ -1,47 +1,49 @@
-import { createApp } from 'vue';
-import { createPinia } from 'pinia';
-import App from './App.vue';
-import PermissionDirectives from './directives/permission';
-import router from './router';
+// src/main.js
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
+import App from './App.vue'
+import router from './router'
+import PermissionDirectives from './directives/permission'
 
-import Aura from '@primeuix/themes/aura';
-import PrimeVue from 'primevue/config';
-import ConfirmationService from 'primevue/confirmationservice';
-import ToastService from 'primevue/toastservice';
+import PrimeVue from 'primevue/config'
+import Aura from '@primeuix/themes/aura'          // ✅ pilih AURA (v4 pakai preset, bukan CSS)
+import ConfirmationService from 'primevue/confirmationservice'
+import ToastService from 'primevue/toastservice'
 import Tooltip from 'primevue/tooltip'
 import Toast from 'primevue/toast'
 
 import '@/assets/styles.scss'
-import 'primeicons/primeicons.css'
+import 'primeicons/primeicons.css'                // ikon (centang, dll)
 
-import { useAuthStore } from '@/stores/auth';
+import { useAuthStore } from '@/stores/auth'
 
-const app = createApp(App);
-const pinia = createPinia();
+const app = createApp(App)
+const pinia = createPinia()
 
-app.use(pinia);
-app.use(router);
+app.use(pinia)
+app.use(router)
 app.use(PrimeVue, {
-    theme: {
-        preset: Aura,
-        options: {
-            darkModeSelector: '.app-dark'
-        }
-    }
-});
-app.use(ToastService);
-app.use(ConfirmationService);
-app.use(PermissionDirectives);
+  ripple: true,
+  theme: {
+    preset: Aura,
+    options: {
+      darkModeSelector: '.app-dark',             // tambahkan class ini di <html> / <body> untuk dark mode
+    },
+  },
+})
+app.use(ToastService)
+app.use(ConfirmationService)
+app.use(PermissionDirectives)
 
 app.directive('tooltip', Tooltip)
 app.component('Toast', Toast)
 
+// click-outside (tetap seperti punyamu)
 const clickOutside = {
   beforeMount(el, binding) {
     el.__clickOutside__ = (e) => {
       if (!(el === e.target || el.contains(e.target))) binding.value?.(e)
     }
-    // gunakan capture biar lebih andal untuk overlay
     document.addEventListener('click', el.__clickOutside__, true)
   },
   unmounted(el) {
@@ -51,17 +53,8 @@ const clickOutside = {
 }
 app.directive('click-outside', clickOutside)
 
-// Initialize auth store before mounting the app
+// init auth lalu mount
 const authStore = useAuthStore()
-
-// Initialize auth store and then mount app
-authStore
-  .initialize()
-  .then(() => {
-    console.log('Auth store initialized, mounting app…')
-    app.mount('#app')
-  })
-  .catch((error) => {
-    console.error('Failed to initialize auth store:', error)
-    app.mount('#app')
-  })
+authStore.initialize()
+  .then(() => app.mount('#app'))
+  .catch(() => app.mount('#app'))

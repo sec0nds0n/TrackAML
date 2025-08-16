@@ -1,3 +1,599 @@
+<script setup>
+import { useAuthStore } from '@/stores/auth';
+import { useCaseStore } from '@/stores/cases';
+import { amlCaseService } from '@/services/AMLCaseService';
+import Avatar from 'primevue/avatar';
+import Button from 'primevue/button';
+import Chip from 'primevue/chip';
+import Column from 'primevue/column';
+import DataTable from 'primevue/datatable';
+import Dialog from 'primevue/dialog';
+import FileUpload from 'primevue/fileupload';
+import InputText from 'primevue/inputtext';
+import TabPanel from 'primevue/tabpanel';
+import TabView from 'primevue/tabview';
+import Tag from 'primevue/tag';
+import Textarea from 'primevue/textarea';
+import Dropdown from 'primevue/dropdown';
+import Timeline from 'primevue/timeline';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useToast } from 'primevue/usetoast'
+import * as api from '@/services/api'
+import { searchUsers } from '@/services/api'
+
+// Stores and routing
+const authStore = useAuthStore();
+const caseStore = useCaseStore();
+const route = useRoute();
+const router = useRouter();
+const toast = useToast()
+
+// Reactive data
+const caseData = ref(null);
+const loading = ref(false);
+const loadError = ref('');
+const showAddNoteDialog = ref(false);
+const showUploadDialog = ref(false);
+const newNoteContent = ref('');
+const documentDescription = ref('');
+const selectedFile = ref(null);
+const comments = ref([])
+const commentBody = ref('')
+const commentVis = ref('internal')
+const visOptions = ['internal','external']
+
+const commentsLoading = ref(false)
+const posting = ref(false)
+
+// Mock data for documents and notes
+const documents = ref([
+    {
+        id: 1,
+        name: 'Transaction_Report.pdf',
+        type: 'PDF',
+        size: '2.5 MB',
+        uploadedBy: 'System',
+        uploadedAt: new Date()
+    },
+    {
+        id: 2,
+        name: 'Wallet_Analysis.docx',
+        type: 'DOCX',
+        size: '1.2 MB',
+        uploadedBy: 'John Doe',
+        uploadedAt: new Date(Date.now() - 86400000)
+    }
+]);
+
+const notes = ref([
+    {
+        id: 1,
+        content: 'Initial review completed. Transaction pattern appears suspicious due to multiple small amounts being transferred in quick succession.',
+        user: 'John Doe',
+        timestamp: new Date(Date.now() - 3600000)
+    },
+    {
+        id: 2,
+        content: 'Requested additional documentation from the customer. Awaiting response.',
+        user: 'Jane Smith',
+        timestamp: new Date(Date.now() - 7200000)
+    }
+]);
+
+// Computed properties
+const canEscalate = computed(() => {
+    return (authStore.isL1Analyst || authStore.isAdmin) && 
+           caseData.value?.level === 'L1' && 
+           caseData.value?.status !== 'Resolved';
+});
+
+const canApprove = computed(() => {
+    return authStore.hasPermission('approve') && 
+           caseData.value?.status !== 'Resolved';
+});
+
+const canReject = computed(() => {
+    return authStore.hasPermission('approve') && 
+           caseData.value?.status !== 'Resolved';
+});
+
+const entityType = computed(() => (caseData?.value?.case_type || '').toLowerCase())
+const isTxCase = computed(() => entityType.value.includes('transaction'))
+
+const mainRef = computed(() => caseData.value?.reference_id || '')
+const txHash   = computed(() => (isTxCase.value ? mainRef.value : (caseData.value?.payload?.tx_hash || '')))
+const fromAddr = computed(() => caseData.value?.payload?.from || caseData.value?.payload?.from_address || '')
+const toAddr   = computed(() => caseData.value?.payload?.to || caseData.value?.payload?.to_address || '')
+const chain    = computed(() => caseData.value?.payload?.chain || caseData.value?.payload?.network || '')
+
+// Risk
+const riskScore = computed(() => caseData.value?.payload?.risk_score ?? null)
+const risks = computed(() => caseData.value?.payload?.risks || caseData.value?.risks || [])
+function riskSeverity(level) {
+  const v = String(level || '').toLowerCase()
+  if (v === 'critical' || v === 'very high') return 'danger'
+  if (v === 'high') return 'warn'
+  if (v === 'medium' || v === 'moderate') return 'info'
+  return 'success' // low/unknown
+}
+
+const mentionQuery = ref('')
+const mentionOpen = ref(false)
+const mentionList = ref([])
+const textareaRef = ref(null)
+let mentionDebounce = null
+
+function getCaretToken(text, caretPos) {
+  const left = text.slice(0, caretPos)
+  const m = left.match(/(^|\s)@([A-Za-z0-9_.]{1,32})$/)
+  return m ? m[2] : null
+}
+
+async function onCommentInput(e) {
+  const el = e.target
+  const caret = el.selectionStart
+  const token = getCaretToken(el.value, caret)
+  clearTimeout(mentionDebounce)
+  mentionDebounce = setTimeout(async () => {
+    try {
+      const res = await searchUsers(token)   // panggil /api/users/search?q=
+      mentionList.value = res || []
+      mentionOpen.value = !!mentionList.value.length
+    } catch {
+      mentionOpen.value = false
+    }
+  }, 150)
+}
+
+function insertAtCursor(el, insertText) {
+  const start = el.selectionStart
+  const left = el.value.slice(0, start)
+  const match = left.match(/(^|\s)@([A-Za-z0-9_.]{1,32})$/)
+  if (!match) return
+  const prefix = left.slice(0, match.index + match[1].length)
+  const newLeft = prefix + '@' + insertText + ' '
+  el.value = newLeft + el.value.slice(start)
+  const pos = newLeft.length
+  el.setSelectionRange(pos, pos)
+  el.dispatchEvent(new Event('input'))
+}
+
+function pickMention(u) {
+  const el = textareaRef.value?.$el?.querySelector('textarea') || textareaRef.value
+  if (!el) return
+  insertAtCursor(el, u.username)
+  mentionOpen.value = false
+}
+
+// Methods
+function title(x) {
+  if (!x) return '';
+  return x.charAt(0).toUpperCase() + x.slice(1).toLowerCase();
+}
+
+function shortRef(s) {
+  if (!s) return '—';
+  const x = String(s);
+  return x.length > 12 ? `${x.slice(0,6)}...${x.slice(-4)}` : x;
+}
+
+function mapCaseToView(c) {
+  const payload = c?.payload || {};
+  const chain = payload.chain || (c?.reference_id?.startsWith?.('0x') ? 'ETH' : 'BTC');
+  const amount = payload.amount != null ? `${payload.amount} ${chain}` : '—';
+  const level = payload.level || 'L1';
+
+  const riskStr = (c?.severity || '').toString().toLowerCase();
+  const riskLevel = riskStr ? riskStr.charAt(0).toUpperCase() + riskStr.slice(1) : '—';
+
+  const tags = Array.isArray(c?.tags) ? c.tags : [];
+  const extraTags = Array.isArray(payload.tags) ? payload.tags : [];
+  const mergedTags = [...tags, ...extraTags];
+
+  return {
+    id: `CASE-${c.id}`,
+    _rawId: c.id,
+    title: c?.title || null,
+    crypto: (c.payload?.chain) || (String(c.reference_id||'').startsWith('0x') ? 'ETH' : 'BTC'),
+    amount: (c.payload?.amount != null) ? `${c.payload.amount} ${ (c.payload?.chain)||'' }` : '—',
+    level,
+    status: c.status,
+    riskLevel: c.severity,
+    customer: payload.wallet || `${(c?.case_type || 'Wallet')}: ${shortRef(c?.reference_id)}`,
+    date: c?.created_at || new Date().toISOString(),
+    createdAt: c.created_at,
+    updatedAt: c?.updated_at,
+    details: {
+      description: c.description || c.reason || 'Unknown description',
+      assignedTo: c.owner_id ? `Owner #${c.owner_id}` : 'Unassigned',
+      priority: c.priority,
+      typology: c.typology,
+      tlp: c.tlp,
+      visibility: c.visibility,
+      tags: Array.isArray(c.tags) ? c.tags : [],
+      reference: c.reference_id,
+      caseType: c.case_type,
+      slaDue: c.sla_due_at,
+    },
+    activities: Array.isArray(payload.activities) ? payload.activities : []
+  };
+}
+const loadCaseData = async () => {
+  const id = route.params.id;
+  loading.value = true;
+  loadError.value = '';
+  try {
+    // 1) coba API langsung
+    const raw = await amlCaseService.getCaseById(id);     // GET /api/cases/:id
+    caseData.value = mapCaseToView(raw);
+  } catch (e) {
+    console.warn('Case detail API fallback to store:', e);
+    // 2) fallback ke store lama (kalau masih ada)
+    const fromStore = caseStore.getCaseById?.(id);
+    if (fromStore) {
+      caseData.value = fromStore;
+    } else {
+      loadError.value = 'Case not found';
+    }
+  } finally {
+    loading.value = false;
+  }
+};
+
+const goBack = () => {
+  if (window.history.length > 1) router.back();
+  else router.push('/monitoring/cases');
+};
+
+const escalateCase = async () => {
+    try {
+        const updatedCase = {
+            ...caseData.value,
+            level: 'L2',
+            status: 'escalated',
+            activities: [
+                ...caseData.value.activities || [],
+                {
+                    timestamp: new Date(),
+                    action: 'Case Escalated to L2',
+                    user: authStore.currentUser?.email || 'Current User',
+                    comment: 'Escalated for further review'
+                }
+            ]
+        };
+
+        caseStore.updateCase(caseData.value.id, updatedCase);
+        caseData.value = updatedCase;
+    } catch (error) {
+        console.error('Error escalating case:', error);
+    }
+};
+
+const approveCase = async () => {
+    try {
+        const updatedCase = {
+            ...caseData.value,
+            status: 'Resolved',
+            activities: [
+                ...caseData.value.activities || [],
+                {
+                    timestamp: new Date(),
+                    action: 'Case Approved',
+                    user: authStore.currentUser?.email || 'Current User',
+                    comment: 'Case approved and resolved'
+                }
+            ]
+        };
+
+        caseStore.updateCase(caseData.value.id, updatedCase);
+        caseData.value = updatedCase;
+    } catch (error) {
+        console.error('Error approving case:', error);
+    }
+};
+
+const rejectCase = async () => {
+    try {
+        const updatedCase = {
+            ...caseData.value,
+            status: 'Rejected',
+            activities: [
+                ...caseData.value.activities || [],
+                {
+                    timestamp: new Date(),
+                    action: 'Case Rejected',
+                    user: authStore.currentUser?.email || 'Current User',
+                    comment: 'Case rejected after review'
+                }
+            ]
+        };
+
+        caseStore.updateCase(caseData.value.id, updatedCase);
+        caseData.value = updatedCase;
+    } catch (error) {
+        console.error('Error rejecting case:', error);
+    }
+};
+
+const editCase = () => {
+    // Navigate to edit case page or open edit dialog
+    console.log('Edit case functionality');
+};
+
+const addNote = () => {
+    if (newNoteContent.value.trim()) {
+        notes.value.unshift({
+            id: Date.now(),
+            content: newNoteContent.value,
+            user: authStore.currentUser?.email || 'Current User',
+            timestamp: new Date()
+        });
+        
+        newNoteContent.value = '';
+        showAddNoteDialog.value = false;
+    }
+};
+
+const onFileSelect = (event) => {
+    selectedFile.value = event.files[0];
+};
+
+const uploadDocument = () => {
+    if (selectedFile.value) {
+        documents.value.unshift({
+            id: Date.now(),
+            name: selectedFile.value.name,
+            type: selectedFile.value.name.split('.').pop().toUpperCase(),
+            size: (selectedFile.value.size / 1024 / 1024).toFixed(2) + ' MB',
+            uploadedBy: authStore.currentUser?.email || 'Current User',
+            uploadedAt: new Date()
+        });
+        
+        selectedFile.value = null;
+        documentDescription.value = '';
+        showUploadDialog.value = false;
+    }
+};
+
+const downloadDocument = (document) => {
+    console.log('Download document:', document.name);
+};
+
+const previewDocument = (document) => {
+    console.log('Preview document:', document.name);
+};
+
+// Utility functions
+const formatDate = (date) => {
+    return new Date(date).toLocaleDateString();
+};
+
+const formatDateTime = (date) => {
+    return new Date(date).toLocaleString();
+};
+
+const getDueDate = () => {
+    const due = caseData.value?.details?.slaDue;
+    if (due) return new Date(due);
+    const created = new Date(caseData.value?.createdAt || Date.now());
+    return new Date(created.getTime() + 7 * 24 * 60 * 60 * 1000); // fallback 7 days
+};
+
+const getInitials = (name) => {
+    return name
+        ? name
+              .split(' ')
+              .map(n => n[0])
+              .join('')
+        : '?';
+};
+
+// New methods for enhanced UX
+const copyToClipboard = async (text) => {
+    try {
+        await navigator.clipboard.writeText(text);
+        // Show toast notification (you can implement this with PrimeVue Toast)
+        console.log('Copied to clipboard:', text);
+    } catch (err) {
+        console.error('Failed to copy:', err);
+    }
+};
+
+const exportCase = () => {
+    // Export case data as PDF or JSON
+    console.log('Exporting case:', caseData.value?.id);
+};
+
+const showMoreOptions = () => {
+    // Show additional options menu
+    console.log('Showing more options');
+};
+
+const getTimeElapsed = (date) => {
+    if (!date) return 'N/A';
+    const now = new Date();
+    const created = new Date(date);
+    const diffTime = Math.abs(now - created);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) return '1 day ago';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.ceil(diffDays / 7)} weeks ago`;
+    return `${Math.ceil(diffDays / 30)} months ago`;
+};
+
+const getLevelSeverity = (level) => {
+    switch (level) {
+        case 'L1': return 'info';
+        case 'L2': return 'warning';
+        default: return 'info';
+    }
+};
+
+const getStatusSeverity = (status) => {
+    switch (status) {
+        case 'Under Review': return 'warning';
+        case 'Investigating': return 'info';
+        case 'Pending': return 'warning';
+        case 'Resolved': return 'success';
+        case 'Rejected': return 'danger';
+        case 'escalated': return 'danger';
+        default: return 'info';
+    }
+};
+
+const getRiskSeverity = (risk) => {
+    switch (risk) {
+        case 'High': return 'danger';
+        case 'Medium': return 'warning';
+        case 'Low': return 'success';
+        default: return 'info';
+    }
+};
+
+const getPrioritySeverity = (priority) => {
+    const p = String(priority || '').toUpperCase();
+    switch (p) {
+        case 'P1': return 'danger';
+        case 'P2': return 'warning';
+        case 'P3': return 'info';
+        case 'P4': return 'success';
+        case 'HIGH': return 'danger';
+        case 'MEDIUM': return 'warning';
+        case 'LOW': return 'info';
+        default: return 'secondary';
+    }
+};
+
+const getTlpSeverity = (tlp) => {
+    const t = String(tlp || '').toUpperCase();
+    switch (t) {
+        case 'RED': return 'danger';
+        case 'AMBER': return 'warning';
+        case 'GREEN': return 'success';
+        case 'WHITE': return 'secondary';
+        default: return 'info';
+    }
+};
+
+const getVisibilitySeverity = (v) => {
+    return String(v || '').toLowerCase() === 'external' ? 'info' : 'secondary';
+};
+
+
+const getFileIcon = (type) => {
+    switch (type.toLowerCase()) {
+        case 'pdf': return 'pi pi-file-pdf text-red-500';
+        case 'doc':
+        case 'docx': return 'pi pi-file-word text-blue-500';
+        case 'jpg':
+        case 'png': return 'pi pi-image text-green-500';
+        default: return 'pi pi-file text-gray-500';
+    }
+};
+
+const getActivityIcon = (action) => {
+    if (action.includes('Created')) return 'pi pi-plus';
+    if (action.includes('Escalated')) return 'pi pi-arrow-up';
+    if (action.includes('Approved')) return 'pi pi-check';
+    if (action.includes('Rejected')) return 'pi pi-times';
+    return 'pi pi-circle';
+};
+
+const getActivityColor = (action) => {
+    if (action.includes('Created')) return '#3B82F6';
+    if (action.includes('Escalated')) return '#F59E0B';
+    if (action.includes('Approved')) return '#10B981';
+    if (action.includes('Rejected')) return '#EF4444';
+    return '#6B7280';
+};
+
+async function loadComments() {
+  commentsLoading.value = true
+  try {
+    const list = await api.getCaseComments(route.params.id)
+    comments.value = (list || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  } catch (e) {
+    if (e?.status === 404) {
+      // endpoint belum ada → tampilkan empty state, tapi jangan spam toast
+      comments.value = []
+    } else if (e?.status === 401 || e?.isAuthError) {
+      toast.add({ severity: 'warn', summary: 'Auth', detail: 'Sesi berakhir. Silakan login lagi.', life: 2500 })
+    } else if (e?.status === 403) {
+      toast.add({ severity: 'warn', summary: 'Akses ditolak', detail: 'Anda tidak punya akses ke komentar case ini.', life: 2500 })
+    } else {
+      toast.add({ severity: 'warn', summary: 'Comments', detail: e?.message || 'Load failed', life: 2000 })
+    }
+  } finally {
+    commentsLoading.value = false
+  }
+}
+async function postComment() {
+  const body = commentBody.value.trim()
+  if (!body) return
+  posting.value = true
+  const optimistic = {
+    id: `tmp-${Date.now()}`,
+    body,
+    visibility: commentVis.value,
+    created_at: new Date().toISOString()
+  }
+  // tampilkan dulu
+  comments.value = [optimistic, ...comments.value]
+  try {
+    await api.addCaseComment(route.params.id, { body, visibility: commentVis.value })
+    commentBody.value = ''
+    await loadComments() // sinkronisasi id & timestamp dari server
+  } catch (e) {
+    // rollback optimistic jika gagal
+    comments.value = comments.value.filter(c => c.id !== optimistic.id)
+    toast.add({ severity: 'error', summary: 'Comment', detail: e?.message || 'Failed', life: 2000 })
+  } finally {
+    posting.value = false
+  }
+}
+// Copy ke clipboard
+async function copyText(txt) {
+  try {
+    await navigator.clipboard.writeText(String(txt))
+    toast.add({ severity: 'success', summary: 'Copied', detail: 'Copied to clipboard', life: 1200 })
+  } catch {
+    toast.add({ severity: 'warn', summary: 'Copy failed', life: 1500 })
+  }
+}
+
+function buildExplorerUrl(kind, value, chain) {
+  if (!value) return null
+  const c = (chain || '').toLowerCase()
+  const host =
+    c.includes('bsc') ? 'https://bscscan.com' :
+    c.includes('polygon') ? 'https://polygonscan.com' :
+    'https://etherscan.io'
+  return kind === 'tx' ? `${host}/tx/${value}` : `${host}/address/${value}`
+}
+// Shorten hash/address agar tidak kepanjangan
+function shorten(v, head = 10, tail = 6) {
+  if (!v) return '-'
+  const s = String(v)
+  if (s.length <= head + tail + 3) return s
+  return `${s.slice(0, head)}…${s.slice(-tail)}`
+}
+
+function onCommentKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && commentBody.value.trim()) {
+    e.preventDefault()
+    postComment()
+  }
+}
+
+// Lifecycle
+onMounted(loadCaseData);
+onMounted(loadComments)
+
+watch(() => route.params.id, () => loadCaseData());
+</script>
+
 <template>
     <div class="case-detail-container">
         <!-- Modern Header with Glass Effect -->
@@ -23,19 +619,12 @@
                 <!-- Case Title & Meta -->
                 <div class="case-meta-section">
                     <div class="case-title-group">
-                        <h1 class="modern-case-id">{{ caseData?.id }}</h1>
+                        <h1 class="modern-case-id">{{ caseData?.id }} — {{ caseData?.title || shortRef(caseData?.details?.reference) }}</h1>
                         <p class="case-subtitle">{{ caseData?.details?.description }}</p>
                     </div>
                     
                     <!-- Status Pills -->
                     <div class="status-pills">
-                        <div class="pill-group">
-                            <span class="pill-label">Level</span>
-                            <Tag 
-                                :value="caseData?.level"
-                                :severity="getLevelSeverity(caseData?.level)"
-                                class="modern-tag" />
-                        </div>
                         <div class="pill-group">
                             <span class="pill-label">Status</span>
                             <Tag 
@@ -49,6 +638,21 @@
                                 :value="caseData?.riskLevel"
                                 :severity="getRiskSeverity(caseData?.riskLevel)"
                                 class="modern-tag" />
+                        </div>
+                        <div class="pill-group">
+                            <span class="pill-label">TLP</span>
+                            <Tag 
+                                :value="caseData?.details?.tlp"
+                                :severity="getTlpSeverity(caseData?.details?.tlp)"
+                                class="modern-tag" />
+                        </div>
+                        <div class="pill-group">
+                            <span class="pill-label">Visibility</span>
+                            <Tag 
+                                :value="caseData?.details?.visibility"
+                                :severity="getVisibilitySeverity(caseData?.details?.visibility)"
+                                class="modern-tag" />
+
                         </div>
                     </div>
                 </div>
@@ -179,161 +783,65 @@
                 <!-- Enhanced Tabs -->
                 <div class="modern-tabs-container">
                     <TabView class="modern-tabview">
-                        <!-- Case Information Tab -->
-                        <TabPanel>
-                            <template #header>
-                                <div class="tab-header">
-                                    <i class="pi pi-info-circle"></i>
-                                    <span>Case Information</span>
-                                </div>
-                            </template>
-                            
-                            <div class="tab-panel-content">
-                                <!-- Transaction Details Card -->
-                                <div class="info-card">
-                                    <div class="card-header-modern">
-                                        <div class="header-title">
-                                            <i class="pi pi-exchange"></i>
-                                            <h3>Transaction Details</h3>
-                                        </div>
-                                        <Button 
-                                            icon="pi pi-external-link"
-                                            severity="secondary"
-                                            text
-                                            rounded
-                                            size="small"
-                                            v-tooltip.top="'View on Blockchain'" />
-                                    </div>
-                                    
-                                    <div class="card-content-grid">
-                                        <div class="detail-card">
-                                            <div class="detail-icon">
-                                                <i class="pi pi-wallet"></i>
-                                            </div>
-                                            <div class="detail-content">
-                                                <label class="detail-label">Wallet/Entity</label>
-                                                <div class="detail-value">{{ caseData?.customer }}</div>
-                                            </div>
-                                            <Button 
-                                                icon="pi pi-copy"
-                                                severity="secondary"
-                                                text
-                                                rounded
-                                                size="small"
-                                                @click="copyToClipboard(caseData?.customer)"
-                                                v-tooltip.top="'Copy'" />
-                                        </div>
-                                        
-                                        <div class="detail-card">
-                                            <div class="detail-icon">
-                                                <i class="pi pi-hashtag"></i>
-                                            </div>
-                                            <div class="detail-content">
-                                                <label class="detail-label">Transaction Hash</label>
-                                                <div class="detail-value hash-truncated">0x1234567890abcdef...</div>
-                                            </div>
-                                            <Button 
-                                                icon="pi pi-copy"
-                                                severity="secondary"
-                                                text
-                                                rounded
-                                                size="small"
-                                                @click="copyToClipboard('0x1234567890abcdef')"
-                                                v-tooltip.top="'Copy Full Hash'" />
-                                        </div>
-                                        
-                                        <div class="detail-card">
-                                            <div class="detail-icon">
-                                                <i class="pi pi-send"></i>
-                                            </div>
-                                            <div class="detail-content">
-                                                <label class="detail-label">From Address</label>
-                                                <div class="detail-value hash-truncated">0xabcd1234...</div>
-                                            </div>
-                                            <Button 
-                                                icon="pi pi-external-link"
-                                                severity="secondary"
-                                                text
-                                                rounded
-                                                size="small"
-                                                v-tooltip.top="'View Address'" />
-                                        </div>
-                                        
-                                        <div class="detail-card">
-                                            <div class="detail-icon">
-                                                <i class="pi pi-download"></i>
-                                            </div>
-                                            <div class="detail-content">
-                                                <label class="detail-label">To Address</label>
-                                                <div class="detail-value hash-truncated">0xefgh5678...</div>
-                                            </div>
-                                            <Button 
-                                                icon="pi pi-external-link"
-                                                severity="secondary"
-                                                text
-                                                rounded
-                                                size="small"
-                                                v-tooltip.top="'View Address'" />
-                                        </div>
-                                    </div>
-                                </div>
+                        <TabPanel header="Comments">
+                            <section class="card mt-4">
+                                <div class="card-header">Discussion</div>
+                                    <div class="card-body">
+                                    <div class="relative w-full">
+                                        <Textarea
+                                            ref="textareaRef"
+                                            v-model="commentBody"
+                                            rows="3"
+                                            autoResize
+                                            class="w-full"
+                                            placeholder="Tulis komentar…"
+                                            @input="onCommentInput"
+                                            @keydown="onCommentKeydown"
+                                        />
 
-                                <!-- Risk Analysis Card -->
-                                <div class="info-card risk-analysis-card">
-                                    <div class="card-header-modern">
-                                        <div class="header-title">
-                                            <i class="pi pi-shield"></i>
-                                            <h3>Risk Analysis</h3>
-                                        </div>
-                                        <div class="risk-score">
-                                            <span class="score-label">Risk Score</span>
-                                            <div class="score-indicator high">8.5</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="risk-indicators-modern">
-                                        <div class="risk-category">
-                                            <h4>Identified Risks</h4>
-                                            <div class="risk-chips">
-                                                <Chip 
-                                                    v-for="tag in caseData?.details?.tags" 
-                                                    :key="tag"
-                                                    :label="tag"
-                                                    class="modern-risk-chip" 
-                                                    icon="pi pi-exclamation-triangle" />
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="risk-breakdown">
-                                            <div class="risk-meter">
-                                                <div class="meter-item">
-                                                    <span class="meter-label">AML Risk</span>
-                                                    <div class="meter-bar">
-                                                        <div class="meter-fill high" style="width: 85%"></div>
-                                                    </div>
-                                                    <span class="meter-value">High</span>
-                                                </div>
-                                                <div class="meter-item">
-                                                    <span class="meter-label">Sanctions Check</span>
-                                                    <div class="meter-bar">
-                                                        <div class="meter-fill medium" style="width: 45%"></div>
-                                                    </div>
-                                                    <span class="meter-value">Medium</span>
-                                                </div>
-                                                <div class="meter-item">
-                                                    <span class="meter-label">PEP Screening</span>
-                                                    <div class="meter-bar">
-                                                        <div class="meter-fill low" style="width: 15%"></div>
-                                                    </div>
-                                                    <span class="meter-value">Low</span>
-                                                </div>
-                                            </div>
+                                        <!-- Mention popover -->
+                                        <div
+                                            v-if="mentionOpen"
+                                            class="mention-popover absolute left-0 mt-1 w-64 max-h-60 overflow-y-auto 
+                                                bg-white border rounded-md shadow-lg z-50"
+                                        >
+                                            <ul class="list-none m-0 p-0">
+                                            <li
+                                                v-for="u in mentionList"
+                                                :key="u.id"
+                                                class="px-3 py-2 cursor-pointer hover:bg-gray-100 text-sm"
+                                                @click="pickMention(u)"
+                                            >
+                                                <span class="font-medium">@{{ u.username }}</span>
+                                                <small v-if="u.email" class="ml-2 text-gray-500">{{ u.email }}</small>
+                                            </li>
+                                            </ul>
                                         </div>
                                     </div>
+
+                                    <!-- skeleton saat loading -->
+                                    <div v-if="commentsLoading" class="mt-3 space-y-2">
+                                        <div class="animate-pulse h-4 w-3/4 surface-300 rounded"></div>
+                                        <div class="animate-pulse h-4 w-2/3 surface-300 rounded"></div>
+                                        <div class="animate-pulse h-4 w-1/2 surface-300 rounded"></div>
+                                    </div>
+
+                                    <div v-else-if="!comments.length" class="text-sm text-color-secondary mt-3">
+                                        Belum ada komentar.
+                                    </div>
+
+                                    <ul v-else class="mt-3 space-y-2">
+                                        <li v-for="c in comments" :key="c.id" class="border-b surface-border pb-2">
+                                        <div class="text-sm text-color-secondary">
+                                            #{{ c.id }} • {{ c.created_at }} •
+                                            <Tag severity="secondary" :value="c.visibility" />
+                                        </div>
+                                        <div class="mt-1 whitespace-pre-line">{{ c.body }}</div>
+                                        </li>
+                                    </ul>
                                 </div>
-                            </div>
+                            </section>
                         </TabPanel>
-
                         <!-- Documents Tab -->
                         <TabPanel header="Documents">
                             <div class="tab-content">
@@ -495,6 +1003,22 @@
                                 :value="caseData?.riskLevel"
                                 :severity="getRiskSeverity(caseData?.riskLevel)" />
                         </div>
+                        <div class="status-item">
+                            <span class="status-label">TLP</span>
+                            <Tag 
+                                :value="caseData?.details?.tlp"
+                                :severity="getTlpSeverity(caseData?.details?.tlp)" />
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Visibility</span>
+                            <Tag 
+                                :value="caseData?.details?.visibility"
+                                :severity="getVisibilitySeverity(caseData?.details?.visibility)" />
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">SLA Due</span>
+                            <span class="timeline-value due-date">{{ formatDateTime(caseData?.details?.slaDue || getDueDate()) }}</span>
+                        </div>
                     </div>
                 </div>
 
@@ -529,11 +1053,11 @@
                     <div class="card-body">
                         <div class="timeline-item">
                             <label>Created</label>
-                            <div class="timeline-value">{{ formatDateTime(caseData?.date) }}</div>
+                            <div class="timeline-value">{{ formatDateTime(caseData?.createdAt) }}</div>
                         </div>
                         <div class="timeline-item">
                             <label>Last Updated</label>
-                            <div class="timeline-value">{{ formatDateTime(new Date()) }}</div>
+                            <div class="timeline-value">{{ formatDateTime(caseData?.updatedAt || new Date()) }}</div>
                         </div>
                         <div class="timeline-item">
                             <label>Due Date</label>
@@ -626,409 +1150,6 @@
         </Dialog>
     </div>
 </template>
-
-<script setup>
-import { useAuthStore } from '@/stores/auth';
-import { useCaseStore } from '@/stores/cases';
-import { amlCaseService } from '@/services/AMLCaseService';
-import Avatar from 'primevue/avatar';
-import Button from 'primevue/button';
-import Chip from 'primevue/chip';
-import Column from 'primevue/column';
-import DataTable from 'primevue/datatable';
-import Dialog from 'primevue/dialog';
-import FileUpload from 'primevue/fileupload';
-import InputText from 'primevue/inputtext';
-import TabPanel from 'primevue/tabpanel';
-import TabView from 'primevue/tabview';
-import Tag from 'primevue/tag';
-import Textarea from 'primevue/textarea';
-import Timeline from 'primevue/timeline';
-import { computed, onMounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
-
-// Stores and routing
-const authStore = useAuthStore();
-const caseStore = useCaseStore();
-const route = useRoute();
-const router = useRouter();
-
-// Reactive data
-const caseData = ref(null);
-const loading = ref(false);
-const loadError = ref('');
-const showAddNoteDialog = ref(false);
-const showUploadDialog = ref(false);
-const newNoteContent = ref('');
-const documentDescription = ref('');
-const selectedFile = ref(null);
-
-// Mock data for documents and notes
-const documents = ref([
-    {
-        id: 1,
-        name: 'Transaction_Report.pdf',
-        type: 'PDF',
-        size: '2.5 MB',
-        uploadedBy: 'System',
-        uploadedAt: new Date()
-    },
-    {
-        id: 2,
-        name: 'Wallet_Analysis.docx',
-        type: 'DOCX',
-        size: '1.2 MB',
-        uploadedBy: 'John Doe',
-        uploadedAt: new Date(Date.now() - 86400000)
-    }
-]);
-
-const notes = ref([
-    {
-        id: 1,
-        content: 'Initial review completed. Transaction pattern appears suspicious due to multiple small amounts being transferred in quick succession.',
-        user: 'John Doe',
-        timestamp: new Date(Date.now() - 3600000)
-    },
-    {
-        id: 2,
-        content: 'Requested additional documentation from the customer. Awaiting response.',
-        user: 'Jane Smith',
-        timestamp: new Date(Date.now() - 7200000)
-    }
-]);
-
-// Computed properties
-const canEscalate = computed(() => {
-    return (authStore.isL1Analyst || authStore.isAdmin) && 
-           caseData.value?.level === 'L1' && 
-           caseData.value?.status !== 'Resolved';
-});
-
-const canApprove = computed(() => {
-    return authStore.hasPermission('approve') && 
-           caseData.value?.status !== 'Resolved';
-});
-
-const canReject = computed(() => {
-    return authStore.hasPermission('approve') && 
-           caseData.value?.status !== 'Resolved';
-});
-
-// Methods
-function title(x) {
-  if (!x) return '';
-  return x.charAt(0).toUpperCase() + x.slice(1).toLowerCase();
-}
-
-function shortRef(s) {
-  if (!s) return '—';
-  const x = String(s);
-  return x.length > 12 ? `${x.slice(0,6)}...${x.slice(-4)}` : x;
-}
-
-function mapCaseToView(c) {
-  // Sumber dari DB:
-  // id, case_type, reference_id, payload(jsonb), status, created_at, updated_at,
-  // reason, source, description, severity, tags[]
-  const payload = c?.payload || {};
-  const chain = payload.chain || (c?.reference_id?.startsWith?.('0x') ? 'ETH' : 'BTC');
-  const amount = payload.amount != null ? `${payload.amount} ${chain}` : '—';
-  const level = payload.level || 'L1';
-  const riskLevel = title(c?.severity) || 'High';
-  const tags = [...(Array.isArray(c?.tags) ? c.tags : []), ...(Array.isArray(payload.tags) ? payload.tags : [])];
-
-  return {
-    id: `CASE-${c.id}`,                 // tampil besar di header
-    _rawId: c.id,                       // id numerik untuk aksi
-    crypto: chain || '—',
-    amount,
-    level,
-    status: c?.status || 'Under Review',
-    riskLevel,
-    customer: payload.wallet || `${(c?.case_type || 'Wallet')}: ${shortRef(c?.reference_id)}`,
-    date: c?.created_at || new Date().toISOString(),
-    details: {
-      description: c?.description || c?.reason || '—',
-      assignedTo: payload.assigned_to || 'Unassigned',
-      priority: title(payload.priority) || riskLevel,
-      tags
-    },
-    activities: Array.isArray(payload.activities) ? payload.activities : []
-  };
-}
-
-const loadCaseData = async () => {
-  const id = route.params.id;
-  loading.value = true;
-  loadError.value = '';
-  try {
-    // 1) coba API langsung
-    const raw = await amlCaseService.getCaseById(id);     // GET /api/cases/:id
-    caseData.value = mapCaseToView(raw);
-  } catch (e) {
-    console.warn('Case detail API fallback to store:', e);
-    // 2) fallback ke store lama (kalau masih ada)
-    const fromStore = caseStore.getCaseById?.(id);
-    if (fromStore) {
-      caseData.value = fromStore;
-    } else {
-      loadError.value = 'Case not found';
-    }
-  } finally {
-    loading.value = false;
-  }
-};
-
-const goBack = () => {
-  if (window.history.length > 1) router.back();
-  else router.push('/monitoring/cases');
-};
-
-const escalateCase = async () => {
-    try {
-        const updatedCase = {
-            ...caseData.value,
-            level: 'L2',
-            status: 'escalated',
-            activities: [
-                ...caseData.value.activities || [],
-                {
-                    timestamp: new Date(),
-                    action: 'Case Escalated to L2',
-                    user: authStore.currentUser?.email || 'Current User',
-                    comment: 'Escalated for further review'
-                }
-            ]
-        };
-
-        caseStore.updateCase(caseData.value.id, updatedCase);
-        caseData.value = updatedCase;
-    } catch (error) {
-        console.error('Error escalating case:', error);
-    }
-};
-
-const approveCase = async () => {
-    try {
-        const updatedCase = {
-            ...caseData.value,
-            status: 'Resolved',
-            activities: [
-                ...caseData.value.activities || [],
-                {
-                    timestamp: new Date(),
-                    action: 'Case Approved',
-                    user: authStore.currentUser?.email || 'Current User',
-                    comment: 'Case approved and resolved'
-                }
-            ]
-        };
-
-        caseStore.updateCase(caseData.value.id, updatedCase);
-        caseData.value = updatedCase;
-    } catch (error) {
-        console.error('Error approving case:', error);
-    }
-};
-
-const rejectCase = async () => {
-    try {
-        const updatedCase = {
-            ...caseData.value,
-            status: 'Rejected',
-            activities: [
-                ...caseData.value.activities || [],
-                {
-                    timestamp: new Date(),
-                    action: 'Case Rejected',
-                    user: authStore.currentUser?.email || 'Current User',
-                    comment: 'Case rejected after review'
-                }
-            ]
-        };
-
-        caseStore.updateCase(caseData.value.id, updatedCase);
-        caseData.value = updatedCase;
-    } catch (error) {
-        console.error('Error rejecting case:', error);
-    }
-};
-
-const editCase = () => {
-    // Navigate to edit case page or open edit dialog
-    console.log('Edit case functionality');
-};
-
-const addNote = () => {
-    if (newNoteContent.value.trim()) {
-        notes.value.unshift({
-            id: Date.now(),
-            content: newNoteContent.value,
-            user: authStore.currentUser?.email || 'Current User',
-            timestamp: new Date()
-        });
-        
-        newNoteContent.value = '';
-        showAddNoteDialog.value = false;
-    }
-};
-
-const onFileSelect = (event) => {
-    selectedFile.value = event.files[0];
-};
-
-const uploadDocument = () => {
-    if (selectedFile.value) {
-        documents.value.unshift({
-            id: Date.now(),
-            name: selectedFile.value.name,
-            type: selectedFile.value.name.split('.').pop().toUpperCase(),
-            size: (selectedFile.value.size / 1024 / 1024).toFixed(2) + ' MB',
-            uploadedBy: authStore.currentUser?.email || 'Current User',
-            uploadedAt: new Date()
-        });
-        
-        selectedFile.value = null;
-        documentDescription.value = '';
-        showUploadDialog.value = false;
-    }
-};
-
-const downloadDocument = (document) => {
-    console.log('Download document:', document.name);
-};
-
-const previewDocument = (document) => {
-    console.log('Preview document:', document.name);
-};
-
-// Utility functions
-const formatDate = (date) => {
-    return new Date(date).toLocaleDateString();
-};
-
-const formatDateTime = (date) => {
-    return new Date(date).toLocaleString();
-};
-
-const getDueDate = () => {
-    const created = new Date(caseData.value?.date);
-    return new Date(created.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from creation
-};
-
-const getInitials = (name) => {
-    return name
-        ? name
-              .split(' ')
-              .map(n => n[0])
-              .join('')
-        : '?';
-};
-
-// New methods for enhanced UX
-const copyToClipboard = async (text) => {
-    try {
-        await navigator.clipboard.writeText(text);
-        // Show toast notification (you can implement this with PrimeVue Toast)
-        console.log('Copied to clipboard:', text);
-    } catch (err) {
-        console.error('Failed to copy:', err);
-    }
-};
-
-const exportCase = () => {
-    // Export case data as PDF or JSON
-    console.log('Exporting case:', caseData.value?.id);
-};
-
-const showMoreOptions = () => {
-    // Show additional options menu
-    console.log('Showing more options');
-};
-
-const getTimeElapsed = (date) => {
-    if (!date) return 'N/A';
-    const now = new Date();
-    const created = new Date(date);
-    const diffTime = Math.abs(now - created);
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 1) return '1 day ago';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.ceil(diffDays / 7)} weeks ago`;
-    return `${Math.ceil(diffDays / 30)} months ago`;
-};
-
-const getLevelSeverity = (level) => {
-    switch (level) {
-        case 'L1': return 'info';
-        case 'L2': return 'warning';
-        default: return 'info';
-    }
-};
-
-const getStatusSeverity = (status) => {
-    switch (status) {
-        case 'Under Review': return 'warning';
-        case 'Investigating': return 'info';
-        case 'Pending': return 'warning';
-        case 'Resolved': return 'success';
-        case 'Rejected': return 'danger';
-        case 'escalated': return 'danger';
-        default: return 'info';
-    }
-};
-
-const getRiskSeverity = (risk) => {
-    switch (risk) {
-        case 'High': return 'danger';
-        case 'Medium': return 'warning';
-        case 'Low': return 'success';
-        default: return 'info';
-    }
-};
-
-const getPrioritySeverity = (priority) => {
-    switch (priority) {
-        case 'High': return 'danger';
-        case 'Medium': return 'warning';
-        case 'Low': return 'info';
-        default: return 'info';
-    }
-};
-
-const getFileIcon = (type) => {
-    switch (type.toLowerCase()) {
-        case 'pdf': return 'pi pi-file-pdf text-red-500';
-        case 'doc':
-        case 'docx': return 'pi pi-file-word text-blue-500';
-        case 'jpg':
-        case 'png': return 'pi pi-image text-green-500';
-        default: return 'pi pi-file text-gray-500';
-    }
-};
-
-const getActivityIcon = (action) => {
-    if (action.includes('Created')) return 'pi pi-plus';
-    if (action.includes('Escalated')) return 'pi pi-arrow-up';
-    if (action.includes('Approved')) return 'pi pi-check';
-    if (action.includes('Rejected')) return 'pi pi-times';
-    return 'pi pi-circle';
-};
-
-const getActivityColor = (action) => {
-    if (action.includes('Created')) return '#3B82F6';
-    if (action.includes('Escalated')) return '#F59E0B';
-    if (action.includes('Approved')) return '#10B981';
-    if (action.includes('Rejected')) return '#EF4444';
-    return '#6B7280';
-};
-
-// Lifecycle
-onMounted(loadCaseData);
-+watch(() => route.params.id, () => loadCaseData());
-</script>
 
 <style scoped>
 /* Modern Container */

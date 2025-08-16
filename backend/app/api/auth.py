@@ -113,3 +113,12 @@ class Logout(Resource):
         resp.set_cookie('access_token', '', expires=0, httponly=True,  secure=secure, samesite=samesite)
         resp.set_cookie('csrf_token',   '', expires=0, httponly=False, secure=secure, samesite=samesite)
         return resp
+    
+@api.route('/csrf')
+class Csrf(Resource):
+    def get(self):
+        # token sudah diset saat login sebagai cookie 'csrf_token'
+        # endpoint ini hanya meng-echo saja bila ada
+        from flask import request, jsonify
+        token = request.cookies.get('csrf_token')
+        return jsonify({'csrf_token': token})

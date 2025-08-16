@@ -59,6 +59,7 @@ export const useAuthStore = defineStore('auth', {
       this.error = null
       try {
         await api.login(credentials)
+        api.resetCsrfCache()
         const res = await api.me()
         const user = res?.user || null
         this.user = user
@@ -77,6 +78,7 @@ export const useAuthStore = defineStore('auth', {
     async logout() {
       this.loading = true
       try { await api.logout() } catch {}
+      api.resetCsrfCache()
       this.user = null
       this.isAuthenticated = false
       this.loading = false
