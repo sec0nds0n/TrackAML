@@ -16,11 +16,12 @@ import Tag from 'primevue/tag';
 import Textarea from 'primevue/textarea';
 import Dropdown from 'primevue/dropdown';
 import Timeline from 'primevue/timeline';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast'
 import * as api from '@/services/api'
 import { searchUsers } from '@/services/api'
+
 
 // Stores and routing
 const authStore = useAuthStore();
@@ -110,6 +111,18 @@ const chain    = computed(() => caseData.value?.payload?.chain || caseData.value
 // Risk
 const riskScore = computed(() => caseData.value?.payload?.risk_score ?? null)
 const risks = computed(() => caseData.value?.payload?.risks || caseData.value?.risks || [])
+
+function extractMentions(text='') {
+  const out = []
+  let m
+  const r = new RegExp(mentionRegex) // bikin instance baru
+  while ((m = r.exec(text)) !== null) {
+    out.push(m[2])
+  }
+  // unikkan
+  return [...new Set(out)]
+}
+
 function riskSeverity(level) {
   const v = String(level || '').toLowerCase()
   if (v === 'critical' || v === 'very high') return 'danger'
@@ -130,40 +143,103 @@ function getCaretToken(text, caretPos) {
   return m ? m[2] : null
 }
 
+const lastCaretPos = ref(0)
+
 async function onCommentInput(e) {
-  const el = e.target
-  const caret = el.selectionStart
-  const token = getCaretToken(el.value, caret)
-  clearTimeout(mentionDebounce)
+  const el = e.target; // native textarea dari event input sudah benar
+  const caret = el.selectionStart;
+  lastCaretPos.value = caret;
+  const token = getCaretToken(el.value, caret);
+
+  clearTimeout(mentionDebounce);
+  if (!token || token.length < 1) { 
+    mentionOpen.value = false;
+    mentionList.value = [];
+    return;
+  }
   mentionDebounce = setTimeout(async () => {
     try {
-      const res = await searchUsers(token)   // panggil /api/users/search?q=
-      mentionList.value = res || []
-      mentionOpen.value = !!mentionList.value.length
+      const res = await searchUsers(token);
+      mentionList.value = res || [];
+      mentionOpen.value = mentionList.value.length > 0;
     } catch {
-      mentionOpen.value = false
+      mentionOpen.value = false;
     }
-  }, 150)
+  }, 150);
 }
 
-function insertAtCursor(el, insertText) {
-  const start = el.selectionStart
-  const left = el.value.slice(0, start)
-  const match = left.match(/(^|\s)@([A-Za-z0-9_.]{1,32})$/)
-  if (!match) return
-  const prefix = left.slice(0, match.index + match[1].length)
-  const newLeft = prefix + '@' + insertText + ' '
-  el.value = newLeft + el.value.slice(start)
-  const pos = newLeft.length
-  el.setSelectionRange(pos, pos)
-  el.dispatchEvent(new Event('input'))
+function getNativeTextarea() {
+  return (
+    textareaRef.value?.$refs?.input ||
+    textareaRef.value?.$el?.querySelector('textarea')
+  );
 }
 
-function pickMention(u) {
-  const el = textareaRef.value?.$el?.querySelector('textarea') || textareaRef.value
-  if (!el) return
-  insertAtCursor(el, u.username)
-  mentionOpen.value = false
+async function pickMention(u) {
+  const el = getNativeTextarea();
+  if (!el) { console.warn('Native textarea not found'); return; }
+
+  // Pakai sumber dari v-model + caret tersimpan
+  const full  = commentBody.value ?? '';
+  const caret = lastCaretPos.value ?? full.length;
+
+  const left  = full.slice(0, caret);
+  const m = left.match(/(^|\s)@([A-Za-z0-9_.]{0,32})$/);
+  if (!m) return;
+
+  const prefix   = left.slice(0, m.index + m[1].length);
+  const inserted = `@${u.username} `;
+  const newLeft  = prefix + inserted;
+  const right    = full.slice(caret);
+  const nextVal  = newLeft + right;
+
+  // 1) Update v-model dulu (supaya reaktif)
+  commentBody.value = nextVal;
+
+  // 2) Sinkronkan native textarea + pancing PrimeVue
+  await nextTick();
+  el.value = nextVal;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+
+  // 3) Tutup popover & posisikan caret
+  mentionOpen.value = false;
+  await nextTick();
+  const pos = newLeft.length;
+  el.focus();
+  el.setSelectionRange(pos, pos);
+
+  // 4) Perbarui caret tersimpan
+  lastCaretPos.value = pos;
+}
+
+const highlighterRef = ref(null)
+
+function escapeHtml(s='') {
+  return s
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;')
+}
+
+const mentionRegex = /(^|[\s(,;[\{])@([A-Za-z0-9_.-]{1,32})\b/g
+
+const highlightedHtml = computed(() => {
+  // Escape dulu, baru inject <mark> untuk @mention
+  const safe = escapeHtml(commentBody.value || '')
+  // Tambahkan \n sentinel supaya tinggi baris sinkron walau baris terakhir kosong
+  const colored = safe.replace(mentionRegex, (m, p1, uname) => {
+    return `${p1}<mark class="mention">@${uname}</mark>`
+  })
+  return colored + '\n'
+})
+
+function syncScroll(e) {
+  // samakan scrollY-nya highlighter dengan textarea
+  if (highlighterRef.value) {
+    highlighterRef.value.scrollTop = e.target.scrollTop
+  }
 }
 
 // Methods
@@ -529,6 +605,7 @@ async function loadComments() {
     commentsLoading.value = false
   }
 }
+
 async function postComment() {
   const body = commentBody.value.trim()
   if (!body) return
@@ -539,20 +616,35 @@ async function postComment() {
     visibility: commentVis.value,
     created_at: new Date().toISOString()
   }
-  // tampilkan dulu
   comments.value = [optimistic, ...comments.value]
   try {
-    await api.addCaseComment(route.params.id, { body, visibility: commentVis.value })
+    const created = await api.addCaseComment(route.params.id, { body, visibility: commentVis.value })
     commentBody.value = ''
-    await loadComments() // sinkronisasi id & timestamp dari server
+    await loadComments()
+
+    // === NEW: notifikasi mention ===
+    const usernames = extractMentions(optimistic.body)
+    if (usernames.length) {
+      // jika API backend belum ada, buatkan endpoint sederhana; ini akan diabaikan kalau 404
+      try {
+        await api.notifyMentions({
+          case_id: route.params.id,
+          comment_id: created?.id, // kalau backend balikin id komentar
+          usernames
+        })
+      } catch (err) {
+        // jangan keras—anggap optional
+        console.debug('notifyMentions skipped:', err?.message || err)
+      }
+    }
   } catch (e) {
-    // rollback optimistic jika gagal
     comments.value = comments.value.filter(c => c.id !== optimistic.id)
     toast.add({ severity: 'error', summary: 'Comment', detail: e?.message || 'Failed', life: 2000 })
   } finally {
     posting.value = false
   }
 }
+
 // Copy ke clipboard
 async function copyText(txt) {
   try {
@@ -787,35 +879,58 @@ watch(() => route.params.id, () => loadCaseData());
                             <section class="card mt-4">
                                 <div class="card-header">Discussion</div>
                                     <div class="card-body">
-                                    <div class="relative w-full">
-                                        <Textarea
-                                            ref="textareaRef"
-                                            v-model="commentBody"
-                                            rows="3"
-                                            autoResize
-                                            class="w-full"
-                                            placeholder="Tulis komentar…"
-                                            @input="onCommentInput"
-                                            @keydown="onCommentKeydown"
-                                        />
+                                    <div class="flex flex-col md:flex-row gap-2">
+                                        <div class="relative w-full">
+                                            <!-- Layer bawah: highlighter -->
+                                            <pre
+                                                ref="highlighterRef"
+                                                class="mention-highlighter"
+                                                aria-hidden="true"
+                                                v-html="highlightedHtml"
+                                            ></pre>
 
-                                        <!-- Mention popover -->
-                                        <div
+                                            <!-- Layer atas: textarea PrimeVue -->
+                                            <Textarea
+                                                ref="textareaRef"
+                                                v-model="commentBody"
+                                                rows="3"
+                                                autoResize
+                                                class="w-full mention-textarea"
+                                                placeholder="Tulis komentar… pakai @username untuk mention"
+                                                @input="onCommentInput"
+                                                @keydown="onCommentKeydown"
+                                                @scroll="syncScroll"
+                                            />
+
+                                            <!-- Mention popover -->
+                                            <div
                                             v-if="mentionOpen"
-                                            class="mention-popover absolute left-0 mt-1 w-64 max-h-60 overflow-y-auto 
-                                                bg-white border rounded-md shadow-lg z-50"
-                                        >
-                                            <ul class="list-none m-0 p-0">
-                                            <li
-                                                v-for="u in mentionList"
-                                                :key="u.id"
-                                                class="px-3 py-2 cursor-pointer hover:bg-gray-100 text-sm"
-                                                @click="pickMention(u)"
+                                            class="mention-popover absolute left-0 mt-1 w-64 max-h-60 overflow-y-auto
+                                                bg-white border rounded-md shadow-lg"
+                                            :style="{ zIndex: 2147483647, pointerEvents: 'auto' }"
+                                            @pointerdown.stop
                                             >
-                                                <span class="font-medium">@{{ u.username }}</span>
-                                                <small v-if="u.email" class="ml-2 text-gray-500">{{ u.email }}</small>
-                                            </li>
-                                            </ul>
+                                                <ul class="divide-y">
+                                                    <li
+                                                        v-for="u in mentionList"
+                                                        :key="u.id ?? u.username"
+                                                        class="px-3 py-2 cursor-pointer hover:bg-gray-100 text-sm"
+                                                        @pointerdown.prevent.stop="pickMention(u)"
+                                                        @mousedown.prevent.stop="pickMention(u)"
+                                                        @click.prevent.stop="pickMention(u)"
+                                                        tabindex="0"
+                                                        @keydown.enter.prevent.stop="pickMention(u)"
+                                                    >
+                                                        <span class="font-medium">@{{ u.username }}</span>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+
+                                        
+                                        <div class="flex items-start gap-2">
+                                        <Dropdown v-model="commentVis" :options="visOptions" class="min-w-12rem" />
+                                        <Button label="Post" @click="postComment" :loading="posting" :disabled="posting || !commentBody.trim()" />
                                         </div>
                                     </div>
 
@@ -1160,6 +1275,14 @@ watch(() => route.params.id, () => loadCaseData());
     color: #1e293b;
     max-width: 1400px;
     margin: 0 auto;
+}
+:deep(.p-inputtextarea) {
+  position: relative;
+  z-index: 0;
+}
+
+.mention-popover {
+  pointer-events: auto;
 }
 
 /* Modern Header with Glass Effect */
@@ -2557,5 +2680,39 @@ watch(() => route.params.id, () => loadCaseData());
     .detail-item:hover {
         transform: none;
     }
+}
+
+.mention-highlighter {
+  /* match tampilan textarea */
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+
+  /* ukuran & padding harus sama dengan textarea PrimeVue */
+  padding: var(--p-inputtext-padding, 0.75rem 1rem);
+  border-radius: var(--p-inputtext-border-radius, 8px);
+
+  /* warna dasar mengikuti surface */
+  color: transparent; 
+  background: transparent;
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  pointer-events: none;
+}
+
+/* Textarea di atas highlighter */
+.mention-textarea :deep(textarea),
+.mention-textarea {
+  background-color: transparent !important;
+  position: relative;
+}
+
+/* Warna mention */
+mark.mention {
+  background: transparent;
+  color: var(--p-primary-color, #2563eb);   /* biru */
+  font-weight: 600;
 }
 </style>

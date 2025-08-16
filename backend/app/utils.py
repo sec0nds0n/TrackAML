@@ -69,8 +69,12 @@ def jwt_required(f):
         except jwt.InvalidTokenError as e:
             current_app.logger.warning(f'JWT invalid: {e.__class__.__name__}: {e}')
             return _json_error('Invalid token', 401)
-
-        g.user_id = payload.get('sub')
+        uid = payload.get('sub')
+        try:
+            uid_int = int(uid)
+        except (TypeError, ValueError):
+            uid_int = uid
+        g.user_id = uid_int
         g.username = payload.get('username')
         g.role = payload.get('role')
         g.permissions = payload.get('permissions', [])
@@ -83,10 +87,12 @@ def jwt_required(f):
     return decorated
 
 def jwt_roles_required(*allowed_roles):
+    allowed = { (r or '').lower() for r in allowed_roles }
     def decorator(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
-            if getattr(g, 'role', None) not in allowed_roles:
+            role = (getattr(g, 'role', None) or '').lower()
+            if role not in allowed:
                 abort(403)
             return f(*args, **kwargs)
         return wrapped

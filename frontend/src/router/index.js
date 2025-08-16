@@ -16,13 +16,13 @@ const router = createRouter({
       { path: '/monitoring/live', name: 'live-monitoring', component: () => import('@/views/monitoring/LiveMonitoring.vue'), beforeEnter: requirePermission(['read']) },
       { path: '/monitoring/crypto', name: 'crypto-monitoring', component: () => import('@/views/monitoring/CryptoMonitoring.vue'), beforeEnter: requirePermission(['read']) },
 
-      { path: '/monitoring/cases', name: 'case-management', component: () => import('@/views/monitoring/CaseManagement.vue'), beforeEnter: requireRole(['analyst_L1', 'analyst_L2', 'admin']) },
-      { path: '/monitoring/cases/:id', name: 'case-detail', component: () => import('@/views/monitoring/CaseDetail.vue'), beforeEnter: requireRole(['analyst_L1', 'analyst_L2', 'admin']) },
+      { path: '/monitoring/cases', name: 'case-management', component: () => import('@/views/monitoring/CaseManagement.vue'), beforeEnter: requireRole(['analyst_l1', 'analyst_l2', 'admin', 'exchanger', 'aph']) },
+      { path: '/monitoring/cases/:id', name: 'case-detail', component: () => import('@/views/monitoring/CaseDetail.vue'), beforeEnter: requireRole(['analyst_l1', 'analyst_l2', 'admin', 'exchanger', 'aph']) },
 
       // Rules: hanya analyst_L2 & admin
       { path: '/monitoring/rules', name: 'rules', component: () => import('@/views/monitoring/Rules.vue'), beforeEnter: requireRole(['analyst_L2', 'admin']) },
 
-      { path: '/monitoring/reports', name: 'reports', component: () => import('@/views/monitoring/ExecutiveReports.vue'), beforeEnter: requireRole(['analyst_L1', 'analyst_L2', 'admin']) },
+      { path: '/monitoring/reports', name: 'reports', component: () => import('@/views/monitoring/ExecutiveReports.vue'), beforeEnter: requireRole(['analyst_l1', 'analyst_l2', 'admin', 'exchanger', 'aph']) },
 
       { path: '/wallet/:address', name: 'wallet-detail', component: () => import('@/views/WalletDetail.vue'), beforeEnter: requirePermission(['read']) },
 

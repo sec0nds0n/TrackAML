@@ -207,6 +207,7 @@ export async function request(path, { method = 'GET', headers = {}, body, timeou
 }
 
 const api = new ApiService();
+api.resetCsrfCache = resetCsrfCache;
 export default api;
 export const createCase = (body) => request('/cases', { method: 'POST', body });
 export const assignEntityToCase = (body) => request('/cases/assign', { method: 'POST', body });
@@ -242,3 +243,21 @@ export const uploadCaseAttachment = (id, file, meta = {}) => {
 };
 export const searchUsers = (q) =>
    request(`/users/search?q=${encodeURIComponent(q)}`, { method: 'GET' });
+
+export async function getNotifications() {
+  return request('GET', '/api/notifications?limit=20')
+}
+export async function readNotifications() {
+  return request('PUT', '/api/notifications/read-all')
+}
+
+export async function notifyMentions(payload) {
+  // Harapannya ada endpoint POST /api/cases/:id/comments/mentions
+  // Jika belum ada, bisa sementara diarahkan ke /api/notifications/mention
+  try {
+    return await request('POST', `/api/notifications/mention`, payload)
+  } catch (e) {
+    // biarkan diam (opsional)
+    throw e
+  }
+}

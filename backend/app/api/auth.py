@@ -1,7 +1,7 @@
 from flask_restx import Namespace, Resource, fields
 from flask import request, current_app, jsonify, make_response, g  # ⬅️ tambahkan g
 from psycopg2.extras import RealDictCursor
-import jwt, datetime, secrets
+import jwt, datetime, secrets, bcrypt
 
 from ..database import get_db_connection
 from ..utils import jwt_required
@@ -21,24 +21,27 @@ user_model = api.model('User', {
 })
 
 def _role_permissions(role):
+    r = (role or '').lower()
     return {
-        'admin':      ['read', 'write', 'assign', 'manage_users'],
-        'analyst_L1': ['read', 'write'],
-        'analyst_L2': ['read', 'write', 'assign'],
-        'Exchanger':  ['read', 'write']
-    }.get(role, [])
+        'admin':       ['read', 'write', 'assign', 'manage_users'],
+        'analyst_l1':  ['read', 'write'],
+        'analyst_l2':  ['read', 'write', 'assign'],
+        'exchanger':   ['read', 'write'],
+        'aph':         ['read', 'write'],
+    }.get(r, [])
 
 def _issue_tokens(user):
     now = datetime.datetime.utcnow()
     exp = now + datetime.timedelta(hours=8)
-    perms = _role_permissions(user['role'])
+    role_norm = (user['role'] or '').lower()
+    perms = _role_permissions(role_norm)
     payload = {
-        'sub': str(user['id']),  # <— penting: string
+        'sub': str(user['id']),
         'username': user['username'],
-        'role': user['role'],
+        'role': role_norm,           # ← lowercase di token
         'permissions': perms,
-        'iat': datetime.datetime.utcnow(),
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=8),
+        'iat': now,
+        'exp': exp
     }
     token = jwt.encode(payload, current_app.config['SECRET_KEY'], algorithm='HS256')
     csrf = secrets.token_urlsafe(24)
@@ -56,33 +59,44 @@ class Login(Resource):
     @api.expect(login_model, validate=True)
     def post(self):
         data = request.get_json() or {}
-        username = (data.get('username') or '').strip()
-        password = (data.get('password') or '').strip()
-        if not username or not password:
+        login_id = (data.get('username') or '').strip()
+        password = (data.get('password') or '').encode('utf-8')
+        if not login_id or not password:
             return {'success': False, 'message': 'Username/password required'}, 400
 
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
-            SELECT id, username, role
+            SELECT id, username, role, password
             FROM users
-            WHERE username = %s AND password = crypt(%s, password)
+            WHERE lower(username) = lower(%s)
             LIMIT 1
-        """, (username, password))
+        """, (login_id,))
         user = cur.fetchone()
         cur.close(); conn.close()
 
-        if not user:
+        # verifikasi hash bcrypt di Python
+        if not user or not user.get('password'):
             return {'success': False, 'message': 'Invalid credentials'}, 401
 
-        token, csrf, exp = _issue_tokens(user)
+        try:
+            ok = bcrypt.checkpw(password, user['password'].encode('utf-8'))
+        except Exception:
+            ok = False
+        if not ok:
+            return {'success': False, 'message': 'Invalid credentials'}, 401
+
+        # normalisasi role → permissions
+        role = (user.get('role') or '').lower()
+        user_norm = {'id': user['id'], 'username': user['username'], 'role': role}
+        token, csrf, exp = _issue_tokens(user_norm)  # boleh kirim role yg sudah dinormalisasi
         body = {
             'success': True,
             'user': {
                 'id': user['id'],
                 'username': user['username'],
-                'role': user['role'],
-                'permissions': _role_permissions(user['role'])
+                'role': role,
+                'permissions': _role_permissions(role),
             }
         }
         resp = make_response(jsonify(body), 200)

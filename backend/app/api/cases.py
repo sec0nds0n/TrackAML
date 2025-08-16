@@ -256,7 +256,7 @@ class CaseAssign(Resource):
     # @login_required
     # @roles_required('admin')
     @jwt_required
-    @jwt_roles_required('admin', 'analyst_L2', 'analyst_L1')
+    @jwt_roles_required('admin', 'analyst_l2', 'analyst_l1', 'exchanger')
     def post(self, case_id):
         user_id = (request.get_json() or {}).get('user_id')
         if not user_id:

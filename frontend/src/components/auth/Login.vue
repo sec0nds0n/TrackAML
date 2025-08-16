@@ -129,9 +129,9 @@ const routeUserByRole = (role) => {
     switch (role) {
         case 'admin':
             return '/dashboard';
-        case 'l1_analyst':
+        case 'analyst_l1':
             return '/monitoring/cases';
-        case 'l2_analyst':
+        case 'analyst_l2':
             return '/monitoring/cases';
         case 'manager':
             return '/dashboard';

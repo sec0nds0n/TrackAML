@@ -58,9 +58,9 @@ const quickLogin = async (usernameValue, passwordValue = 'securepassword') => {
 const getDefaultRedirectPath = (role) => {
   const roleRoutes = {
     admin: '/dashboard',
-    analyst_L1: '/monitoring/cases',
-    analyst_L2: '/monitoring/cases',
-    Exchanger: '/dashboard',
+    analyst_l1: '/dashboard',
+    analyst_l2: '/dashboard',
+    exchanger: '/dashboard',
     user: '/dashboard'
   }
   return roleRoutes[role] || '/dashboard'
