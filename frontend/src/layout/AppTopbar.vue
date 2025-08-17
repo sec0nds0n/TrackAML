@@ -1,50 +1,111 @@
 <script setup>
-import { useLayout } from '@/layout/composables/layout';
-import { ref, onMounted, computed } from 'vue';
-import { useRouter } from 'vue-router';
-import { useNotifStore } from '@/stores/notifications';
-import { useAuthStore } from '@/stores/auth';
+import { useLayout } from '@/layout/composables/layout'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import { useToast } from 'primevue/usetoast'
+import { useNotificationStore } from '@/stores/notifications'
 
-const { toggleMenu, toggleDarkMode, isDarkTheme } = useLayout();
-useLayout();
-const router = useRouter();
+const { toggleMenu, toggleDarkMode, isDarkTheme } = useLayout()
+useLayout()
 
-const showProfileDropdown = ref(false);
-const openNotif = ref(false);
-const notifStore = useNotifStore();
-const authStore = useAuthStore();
+const toast = useToast()
+const router = useRouter()
+
+// Pakai satu instance store saja (hindari duplikasi variabel yg sama)
+const auth = useAuthStore()
+const notif = useNotificationStore()
+
+const showDropdown = ref(false)
+const showProfileDropdown = ref(false)
+
 const displayName = computed(() => {
-  const u = authStore.user || {};
-  return u.username || u.email || 'User';
-});
+  const u = auth.user || {}
+  return u.username || u.email || 'User'
+})
 const initials = computed(() => {
-  const n = displayName.value.trim();
-  return n ? n.split(/\s+/).map(s => s[0]).join('').slice(0,2).toUpperCase() : '?';
-});
+  const n = displayName.value.trim()
+  return n ? n.split(/\s+/).map(s => s[0]).join('').slice(0, 2).toUpperCase() : '?'
+})
 
-const toggleProfileDropdown = () => { showProfileDropdown.value = !showProfileDropdown.value; };
-const closeProfileDropdown = () => { showProfileDropdown.value = false; };
+const toggleProfileDropdown = () => { showProfileDropdown.value = !showProfileDropdown.value }
+const closeProfileDropdown = () => { showProfileDropdown.value = false }
 
 const handleSignOut = async () => {
-  closeProfileDropdown();
-  try {
-    await authStore.logout?.();
-  } finally {
-    router.replace('/auth/login');
+  closeProfileDropdown()
+  try { await auth.logout?.() } finally { router.replace('/auth/login') }
+}
+const handleMyProfile = () => { closeProfileDropdown(); router.push('/profile') }
+
+// --- Notifikasi ---
+
+// 1) Snapshot ID, supaya toast hanya muncul untuk item BARU setelah initial fetch
+let lastIds = new Set()
+
+onMounted(async () => {
+  console.log('[Topbar] mounted')
+  const justLoggedIn = sessionStorage.getItem('justLoggedIn') === '1'
+  if (justLoggedIn) {
+    sessionStorage.removeItem('justLoggedIn')
+    toast.add({
+      severity: 'success',
+      summary: 'Welcome!',
+      detail: `Hi ${auth.user?.name || displayName.value}, you are now logged in.`,
+      life: 4000
+    })
   }
-};
 
-const handleMyProfile = () => {
-  console.log('Navigate to profile...');
-  closeProfileDropdown();
-  router.push('/profile');
-};
+  // Trigger fetch awal agar badge tidak 0 sampai interval polling berikutnya
+  try { await notif.fetchUnread?.() } catch {}
 
-// load notifikasi saat topbar mount
-onMounted(() => {
-  // aman kalau endpoint belum ada—biar nggak ganggu UI
-  notifStore.fetch?.().catch(() => {});
-});
+  // Ambil snapshot ID setelah fetch pertama (hindari toast pada batch awal)
+  setTimeout(() => {
+    lastIds = new Set((notif.items || []).map(i => i.id))
+  }, 200)
+})
+
+// 2) Mulai/stop polling mengikuti status auth
+watch(
+  () => auth.isAuthenticated,
+  (ok) => { ok ? notif.startPoll(10000) : notif.stopPoll() },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  notif.stopPoll()
+})
+
+// 3) Deteksi item notifikasi baru → toast
+watch(
+  () => notif.items.map(i => i.id).join(','),
+  () => {
+    const nowIds = new Set(notif.items.map(i => i.id))
+    for (const n of notif.items) {
+      if (!lastIds.has(n.id) && n.type === 'case_assigned') {
+        toast.add({
+          severity: 'info',
+          summary: 'New assignment',
+          detail: n.message,
+          life: 5000
+        })
+      }
+    }
+    lastIds = nowIds
+  }
+)
+
+// Klik item di dropdown
+function onClickNotification(n) {
+  if (n?.meta?.case_id) {
+    router.push({ name: 'case-detail', params: { id: n.meta.case_id } })
+  }
+  showDropdown.value = false
+}
+
+async function onMarkAllRead() {
+  await notif.markAllRead()
+  showDropdown.value = false
+}
 </script>
 
 <template>
@@ -67,58 +128,55 @@ onMounted(() => {
 
       <div class="layout-topbar-menu hidden lg:block">
         <div class="layout-topbar-menu-content flex items-center gap-2">
-          <button type="button" class="layout-topbar-action">
-            <i class="pi pi-calendar"></i>
-            <span>Calendar</span>
-          </button>
-          <button type="button" class="layout-topbar-action">
-            <i class="pi pi-inbox"></i>
-            <span>Messages</span>
-          </button>
-
-          <!-- ========== Bell Notif (ADD) ========== -->
-          <div class="relative" v-click-outside="() => (openNotif = false)">
-            <button type="button" class="layout-topbar-action relative" @click="openNotif = !openNotif">
-              <i class="pi pi-bell"></i>
-              <span
-                v-if="notifStore.unread"
-                class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1"
-              >
-                {{ notifStore.unread }}
-              </span>
-              <span>Notifications</span>
+            <button type="button" class="layout-topbar-action">
+                <i class="pi pi-calendar"></i>
+                <span>Calendar</span>
+            </button>
+            <button type="button" class="layout-topbar-action">
+                <i class="pi pi-inbox"></i>
+                <span>Messages</span>
             </button>
 
-            <!-- Dropdown notif -->
-            <div
-              v-if="openNotif"
-              class="notif-dropdown"
-            >
-              <div class="notif-header">
-                <span class="font-medium">Notifications</span>
-                <button class="mark-read" @click="notifStore.markAllRead?.()">Mark all read</button>
-              </div>
+            <!-- Bell -->
+            <div class="relative">
+            <button class="relative" @click="showDropdown = !showDropdown" aria-label="Notifications">
+                <i class="pi pi-bell text-xl"></i>
+                <span v-if="notif.unreadCount > 0"
+                    class="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs px-1">
+                {{ notif.unreadCount }}
+                </span>
+            </button>
 
-              <ul class="notif-list">
-                <li v-if="!notifStore.items?.length" class="px-3 py-4 text-sm text-gray-500">
-                  Belum ada notifikasi.
-                </li>
+            <!-- Dropdown -->
+            <div v-if="showDropdown"
+                class="absolute right-0 mt-2 w-80 rounded-lg border bg-white shadow-lg z-50">
+                <div class="flex items-center justify-between p-3 border-b">
+                <div class="font-semibold">Notifications</div>
+                <button class="text-sm text-emerald-600 hover:underline" @click="onMarkAllRead">
+                    Mark all read
+                </button>
+                </div>
 
-                <li
-                  v-for="n in notifStore.items"
-                  :key="n.id"
-                  class="notif-item"
-                >
-                  <div class="notif-title">{{ n.title || 'Mention' }}</div>
-                  <div class="notif-msg">{{ n.message }}</div>
-                  <small class="notif-time">{{ new Date(n.created_at).toLocaleString() }}</small>
-                </li>
-              </ul>
+                <div class="max-h-80 overflow-auto">
+                <div v-if="notif.items.length === 0" class="p-3 text-gray-500 text-sm">
+                    Belum ada notifikasi.
+                </div>
+
+                <button v-for="n in notif.items" :key="n.id"
+                        class="w-full text-left p-3 hover:bg-gray-50 border-b last:border-b-0"
+                        @click="onClickNotification(n)">
+                    <div class="text-sm" :class="{'font-semibold': !n.is_read}">
+                    {{ n.message }}
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">
+                    {{ new Date(n.created_at).toLocaleString() }}
+                    </div>
+                </button>
+                </div>
             </div>
-          </div>
-          <!-- ========== /Bell Notif ========== -->
+        </div>
 
-          <div class="relative" v-click-outside="closeProfileDropdown">
+          <div class="relative">
             <button
               type="button"
               class="layout-topbar-action"

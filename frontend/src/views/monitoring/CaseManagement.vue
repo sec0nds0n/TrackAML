@@ -93,11 +93,13 @@
                                 </div>
                                 
                                 <div class="action-item" v-if="authStore.hasPermission('write')">
-                                    <Button 
-                                        icon="pi pi-plus" 
-                                        label="New Case" 
-                                        @click="showCreateDialog = true"
-                                        class="primary-action modern-primary-btn" />
+                                    <Button
+                                        label="Create Case"
+                                        icon="pi pi-plus"
+                                        severity="success"
+                                        class="ml-auto"
+                                        @click="showCreateModal = true"
+                                    />
                                 </div>
                             </div>
                             
@@ -346,16 +348,19 @@
 
                             <!-- Actions -->
                             <td class="py-4 pr-3">
-                            <button @click="viewCase(row)"
+                                <button
+                                    @click="goDetail(row.id)"
                                     class="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-md transition-colors"
-                                    title="View Details">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                </svg>
-                            </button>
+                                    title="View Details"
+                                    aria-label="View Details"
+                                >
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                </button>
                             </td>
                         </tr>
                         </tbody>
@@ -364,199 +369,90 @@
             </div>
         </div>
 
-        <!-- Case Details Dialog -->
-        <Dialog v-model:visible="showCaseDialog"
-                :header="selectedCase ? 'Case Details: ' + selectedCase.id : ''"
-                :modal="true"
-                :style="{ width: '90vw', maxWidth: '1200px' }"
-                :maximizable="true"
-                :closable="true"
-                class="case-details-dialog">
-            <div v-if="selectedCase" class="grid">
-                <div class="col-12 lg:col-8">
-                    <div class="surface-card p-4 border-round shadow-1">
-                        <div class="flex flex-column lg:flex-row justify-content-between align-items-start lg:align-items-center mb-4 gap-3">
-                            <div class="flex-1">
-                                <h5 class="m-0 text-2xl font-bold text-900">{{ selectedCase.title }}</h5>
-                                <p class="text-600 mt-2 mb-0 line-height-3">{{ selectedCase.description }}</p>
-                                <div class="mt-3 p-3 surface-ground border-round">
-                                    <div class="grid">
-                                        <div class="col-12 md:col-6">
-                                            <label class="block text-600 font-medium mb-1">Wallet Address</label>
-                                            <div class="font-mono text-sm">{{ selectedCase.wallet }}</div>
-                                        </div>
-                                        <div class="col-12 md:col-6">
-                                            <label class="block text-600 font-medium mb-1">Amount</label>
-                                            <div class="font-bold text-900">{{ selectedCase.amount }}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex gap-2 flex-wrap">
-                                <Tag :value="selectedCase.crypto"
-                                     :severity="getCryptoSeverity(selectedCase.crypto)"
-                                     class="font-medium" />
-                                <Tag :value="selectedCase.level"
-                                     :severity="getLevelSeverity(selectedCase.level)"
-                                     class="font-medium" />
-                                <Tag :value="getStatusLabel(selectedCase.status)"
-                                     :severity="getStatusSeverity(selectedCase.status)"
-                                     class="font-medium" />
-                                <Tag :value="selectedCase.priority"
-                                     :severity="getPrioritySeverity(selectedCase.priority)"
-                                     class="font-medium" />
-                            </div>
-                        </div>
+        <!-- Modal Create Case -->
+        <Dialog v-model:visible="showCreateModal"
+                modal header="Create Case"
+                :style="{ width: '760px' }"
+                :breakpoints="{ '960px':'85vw', '641px':'98vw' }">
 
-                        <TabView class="case-tabs">
-                            <TabPanel header="Documents" leftIcon="pi pi-file">
-                                <div class="documents-section">
-                                    <DataTable :value="selectedCase.documents"
-                                               class="p-datatable-sm"
-                                               stripedRows
-                                               showGridlines>
-                                        <Column field="name" header="Document" headerClass="font-bold"></Column>
-                                        <Column field="type" header="Type" headerClass="font-bold"></Column>
-                                        <Column field="status" header="Status" headerClass="font-bold">
-                                            <template #body="slotProps">
-                                                <Tag :value="slotProps.data.status"
-                                                     :severity="getDocumentStatusSeverity(slotProps.data.status)"
-                                                     class="font-medium" />
-                                            </template>
-                                        </Column>
-                                        <Column field="uploadedBy" header="Uploaded By" headerClass="font-bold"></Column>
-                                        <Column field="uploadedAt" header="Uploaded At" headerClass="font-bold">
-                                            <template #body="slotProps">
-                                                <span class="font-medium">{{ formatDate(slotProps.data.uploadedAt) }}</span>
-                                            </template>
-                                        </Column>
-                                        <Column header="Actions" headerClass="font-bold">
-                                            <template #body="slotProps">
-                                                <Button icon="pi pi-download"
-                                                        class="p-button-text p-button-sm"
-                                                        v-tooltip.top="'Download'" />
-                                            </template>
-                                        </Column>
-                                    </DataTable>
-                                </div>
-                            </TabPanel>
-
-                            <TabPanel header="Activity" leftIcon="pi pi-clock">
-                                <div class="activity-section">
-                                    <Timeline :value="selectedCase.activities"
-                                             class="w-full custom-timeline">
-                                        <template #content="slotProps">
-                                            <div class="timeline-content surface-ground p-3 border-round shadow-1">
-                                                <div class="flex justify-content-between align-items-center mb-2">
-                                                    <span class="font-bold text-900">{{ slotProps.item.action }}</span>
-                                                    <small class="text-600">{{ formatDateTime(slotProps.item.timestamp) }}</small>
-                                                </div>
-                                                <div class="text-700 mb-2">{{ slotProps.item.user }}</div>
-                                                <div v-if="slotProps.item.comment" 
-                                                     class="surface-card p-3 border-round border-left-3 border-primary">
-                                                    <i class="pi pi-comment mr-2 text-600"></i>
-                                                    {{ slotProps.item.comment }}
-                                                </div>
-                                            </div>
-                                        </template>
-                                    </Timeline>
-                                </div>
-                            </TabPanel>
-
-                            <TabPanel header="Notes" leftIcon="pi pi-comment">
-                                <div class="notes-section">
-                                    <div class="flex flex-column gap-3 mb-4">
-                                        <div v-for="note in selectedCase.notes"
-                                             :key="note.id"
-                                             class="note-item surface-ground p-4 border-round shadow-1">
-                                            <div class="flex justify-content-between align-items-center mb-3">
-                                                <div class="flex align-items-center gap-2">
-                                                    <Avatar :label="getInitials(note.user)"
-                                                            size="small"
-                                                            shape="circle"
-                                                            :style="{ backgroundColor: getAvatarColor(note.user) }" />
-                                                    <span class="font-bold text-900">{{ note.user }}</span>
-                                                </div>
-                                                <small class="text-600 font-medium">{{ formatDateTime(note.timestamp) }}</small>
-                                            </div>
-                                            <p class="m-0 line-height-3 text-700">{{ note.content }}</p>
-                                        </div>
-                                    </div>
-                                    <div class="add-note-section surface-card p-4 border-round shadow-1">
-                                        <h6 class="text-900 mb-3">Add New Note</h6>
-                                        <div class="flex gap-2">
-                                            <InputText v-model="newNote"
-                                                      placeholder="Add a note..."
-                                                      class="flex-1" />
-                                            <Button label="Add Note"
-                                                    icon="pi pi-plus"
-                                                    @click="addNote"
-                                                    :disabled="!newNote.trim()" />
-                                        </div>
-                                    </div>
-                                </div>
-                            </TabPanel>
-                        </TabView>
-                    </div>
-                </div>
-
-                <div class="col-12 lg:col-4">
-                    <div class="sidebar-content">
-                        <div class="surface-card p-4 border-round shadow-1 mb-4">
-                            <h6 class="text-900 font-bold mb-3 border-bottom-1 surface-border pb-2">Case Information</h6>
-                            <div class="grid">
-                                <div class="col-12">
-                                    <div class="info-item mb-3">
-                                        <label class="block text-600 font-medium mb-1">Created By</label>
-                                        <div class="font-bold text-900">{{ selectedCase.createdBy }}</div>
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <div class="info-item mb-3">
-                                        <label class="block text-600 font-medium mb-1">Created At</label>
-                                        <div class="font-bold text-900">{{ formatDateTime(selectedCase.createdAt) }}</div>
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <div class="info-item mb-3">
-                                        <label class="block text-600 font-medium mb-1">Last Updated</label>
-                                        <div class="font-bold text-900">{{ formatDateTime(selectedCase.updatedAt) }}</div>
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <div class="info-item">
-                                        <label class="block text-600 font-medium mb-1">Due Date</label>
-                                        <div class="font-bold text-900">{{ formatDate(selectedCase.dueDate) }}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="surface-card p-4 border-round shadow-1">
-                            <h6 class="text-900 font-bold mb-3 border-bottom-1 surface-border pb-2">Stakeholders</h6>
-                            <div class="flex flex-column gap-3">
-                                <div v-for="stakeholder in selectedCase.stakeholders"
-                                     :key="stakeholder.id"
-                                     class="stakeholder-item flex align-items-center justify-content-between p-3 surface-ground border-round">
-                                    <div class="flex align-items-center gap-3">
-                                        <Avatar :label="getInitials(stakeholder.name)"
-                                                size="normal"
-                                                shape="circle"
-                                                :style="{ backgroundColor: getAvatarColor(stakeholder.name) }" />
-                                        <div>
-                                            <div class="font-bold text-900">{{ stakeholder.name }}</div>
-                                            <small class="text-600 font-medium">{{ stakeholder.role }}</small>
-                                        </div>
-                                    </div>
-                                    <Tag :value="stakeholder.notificationStatus"
-                                         :severity="getNotificationStatusSeverity(stakeholder.notificationStatus)"
-                                         class="font-medium" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <div class="p-fluid formgrid grid gap-3">
+            <div class="field col-12 md:col-4">
+            <label class="block text-sm mb-2">Type</label>
+            <Dropdown v-model="caseForm.type"
+                        :options="[{label:'Suspicious Wallet',value:'wallet'},{label:'Anomaly Transaction',value:'transaction'}]"
+                        optionLabel="label" optionValue="value" class="w-full"
+                        placeholder="Select type"/>
             </div>
+
+            <div class="field col-12 md:col-8">
+            <label class="block text-sm mb-2">Reference ID</label>
+            <InputText v-model.trim="caseForm.reference_id" class="w-full" placeholder="Wallet address atau Tx hash"/>
+            </div>
+
+            <div class="field col-12">
+            <label class="block text-sm mb-2">Title</label>
+            <InputText v-model.trim="caseForm.title" class="w-full" placeholder="Judul singkat"/>
+            </div>
+
+            <div class="field col-12 md:col-4">
+            <label class="block text-sm mb-2">Severity</label>
+            <Dropdown v-model="caseForm.severity" :options="severityOptions" class="w-full"/>
+            </div>
+            <div class="field col-12 md:col-4">
+            <label class="block text-sm mb-2">Priority</label>
+            <Dropdown v-model="caseForm.priority" :options="priorityOptions" class="w-full"/>
+            </div>
+            <div class="field col-12 md:col-4">
+            <label class="block text-sm mb-2">Typology</label>
+            <InputText v-model.trim="caseForm.typology" class="w-full" placeholder="mixer / sanctions / fraud ..."/>
+            </div>
+
+            <div class="field col-12 md:col-6">
+            <label class="block text-sm mb-2">Reason</label>
+            <InputText v-model.trim="caseForm.reason" class="w-full" placeholder="Alasan / indikator"/>
+            </div>
+            <div class="field col-12 md:col-6">
+            <label class="block text-sm mb-2">Notes</label>
+            <Textarea v-model="caseForm.notes" rows="3" autoResize class="w-full"
+                        placeholder="Catatan analisa awal"/>
+            </div>
+
+            <div class="field col-12 md:col-6">
+            <label class="block text-sm mb-2">Tags</label>
+            <Chips v-model="caseForm.tags" separator="," class="w-full"
+                    inputClass="w-full" placeholder="Ketik lalu Enter/koma untuk tambah tag"/>
+            </div>
+
+            <div class="field col-6 md:col-3">
+            <label class="block text-sm mb-2">TLP</label>
+            <Dropdown v-model="caseForm.tlp" :options="tlpOptions" class="w-full"/>
+            </div>
+            <div class="field col-6 md:col-3">
+            <label class="block text-sm mb-2">Visibility</label>
+            <Dropdown v-model="caseForm.visibility" :options="visibilityOptions" class="w-full"/>
+            </div>
+
+            <div class="field col-12 md:col-6">
+            <label class="block text-sm mb-2">SLA Due</label>
+            <Calendar v-model="caseForm.sla_due_at" showTime hourFormat="24" showIcon dateFormat="yy-mm-dd" class="w-full"/>
+            </div>
+
+            <div class="field col-12">
+            <div class="flex items-center gap-2">
+                <Checkbox v-model="caseForm.assignToMe" :binary="true" inputId="assignme" />
+                <label for="assignme">Assign ke saya</label>
+            </div>
+            </div>
+
+            <div v-if="createError" class="col-12">
+            <small class="p-error">{{ createError }}</small>
+            </div>
+        </div>
+
+        <template #footer>
+            <Button label="Cancel" severity="secondary" text @click="showCreateModal=false"/>
+            <Button label="Create Case" :loading="creating" :disabled="!isValidCreate" @click="onCreateCase"/>
+        </template>
         </Dialog>
     </div>
 </template>
@@ -565,26 +461,18 @@
 import { useAuthStore } from '@/stores/auth';
 import Avatar from 'primevue/avatar';
 import Button from 'primevue/button';
-import Calendar from 'primevue/calendar';
-import Chips from 'primevue/chips';
-import Column from 'primevue/column';
-import DataTable from 'primevue/datatable';
 import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
-import InputNumber from 'primevue/inputnumber';
 import InputText from 'primevue/inputtext';
-import MultiSelect from 'primevue/multiselect';
-import SelectButton from 'primevue/selectbutton';
-import Slider from 'primevue/slider';
-import TabPanel from 'primevue/tabpanel';
-import TabView from 'primevue/tabview';
-import Tag from 'primevue/tag';
-import Timeline from 'primevue/timeline';
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import * as api from '@/services/api'
-import { defineComponent } from 'vue'
+import { createCase } from '@/services/api'
+import Textarea from 'primevue/textarea'
+import Chips from 'primevue/chips'
+import Checkbox from 'primevue/checkbox'
+import Calendar from 'primevue/calendar'
 
 // Auth store
 const authStore = useAuthStore();
@@ -609,6 +497,7 @@ const unreadNotifications = ref([]);
 
 const router = useRouter()
 const toast = useToast()
+
 
 // New reactive data for enhanced UI
 const showAdvancedFilters = ref(false);
@@ -1150,13 +1039,6 @@ const statusOptions = computed(() => [
     { label: 'Rejected', value: 'rejected', count: cases.value.filter(c => c.status === 'rejected').length }
 ]);
 
-// Updated priority options with counts
-const priorityOptions = computed(() => [
-    { label: 'High', value: 'high', count: cases.value.filter(c => c.priority === 'high').length },
-    { label: 'Medium', value: 'medium', count: cases.value.filter(c => c.priority === 'medium').length },
-    { label: 'Low', value: 'low', count: cases.value.filter(c => c.priority === 'low').length }
-]);
-
 // Updated crypto options with counts
 const cryptoOptions = computed(() => {
     const cryptos = [...new Set(cases.value.map(c => c.crypto))];
@@ -1177,6 +1059,9 @@ function sortBy(key) {
     sort.value.key = key
     sort.value.dir = 'asc'
   }
+}
+function goDetail(id) {
+  router.push(`/monitoring/cases/${id}`)
 }
 
 function valFor(row, key) {
@@ -1222,6 +1107,115 @@ const SortIcon = {
       </svg>
     </span>
   `
+}
+const showCreateModal = ref(false)
+const creating = ref(false)
+const createError = ref('')
+
+const severityOptions   = ['LOW','MEDIUM','HIGH','CRITICAL']
+const priorityOptions   = ['P1','P2','P3','P4']
+const tlpOptions        = ['WHITE','GREEN','AMBER','RED']
+const visibilityOptions = ['internal','external']
+
+const caseForm = ref({
+  type: null,            // 'wallet' | 'transaction'
+  reference_id: '',
+  title: '',
+  severity: 'MEDIUM',
+  priority: 'P3',
+  typology: '',
+  reason: '',
+  notes: '',
+  tags: [],
+  tlp: 'GREEN',
+  visibility: 'internal',
+  sla_due_at: null,      // Date object dari Calendar
+  assignToMe: true
+})
+
+const isValidCreate = computed(() =>
+  !!caseForm.value.type &&
+  !!caseForm.value.reference_id &&
+  severityOptions.includes(caseForm.value.severity) &&
+  priorityOptions.includes(caseForm.value.priority) &&
+  tlpOptions.includes(caseForm.value.tlp) &&
+  visibilityOptions.includes(caseForm.value.visibility)
+)
+
+function resetCreateForm () {
+  caseForm.value = {
+    type: null,
+    reference_id: '',
+    title: '',
+    severity: 'MEDIUM',
+    priority: 'P3',
+    typology: '',
+    reason: '',
+    notes: '',
+    tags: [],
+    tlp: 'GREEN',
+    visibility: 'internal',
+    sla_due_at: null,
+    assignToMe: true
+  }
+  createError.value = ''
+}
+
+async function onCreateCase() {
+  createError.value = ''
+  if (!isValidCreate.value) {
+    createError.value = 'Lengkapi field wajib (Type, Reference ID, Severity, Priority, TLP, Visibility).'
+    return
+  }
+  creating.value = true
+  try {
+    const slaISO = caseForm.value.sla_due_at
+      ? new Date(caseForm.value.sla_due_at).toISOString()
+      : undefined
+
+    const common = {
+      title: caseForm.value.title || undefined,
+      priority: caseForm.value.priority,
+      typology: caseForm.value.typology || undefined,
+      severity: caseForm.value.severity,
+      reason: caseForm.value.reason || undefined,
+      tags: (caseForm.value.tags?.length ? caseForm.value.tags : undefined),
+      tlp: caseForm.value.tlp,
+      visibility: caseForm.value.visibility,
+      sla_due_at: slaISO,
+      // catatan awal ikut ke payload
+      payload: { notes: caseForm.value.notes || undefined }
+    }
+
+    let res
+    if (caseForm.value.assignToMe) {
+      // assign ke user saat ini
+      res = await createCase({
+        type: caseForm.value.type,
+        reference_id: caseForm.value.reference_id,
+        assignToMe: true,
+        ...common
+      })
+    } else {
+      // fallback lain bila tidak auto-assign (opsional, sama seperti CryptoMonitoring.vue)
+      res = await api.assignEntityToCase({
+        entity_type: caseForm.value.type === 'transaction' ? 'tx' : 'wallet',
+        entity_key: caseForm.value.reference_id,
+        ...common
+      })
+    }
+
+    const newId = res?.case_id || res?.id
+    toast.add({ severity: 'success', summary: 'Case created', detail: `ID: ${newId}`, life: 2500 })
+    showCreateModal.value = false
+    resetCreateForm()
+    router.push(`/monitoring/cases/${newId}`)
+  } catch (e) {
+    createError.value = e?.data?.message || e?.message || 'Create Case failed'
+    toast.add({ severity: 'error', summary: 'Failed', detail: createError.value, life: 3000 })
+  } finally {
+    creating.value = false
+  }
 }
 
 function mapRow(c) {

@@ -13,6 +13,7 @@ from .compliance import api as compliance_ns
 from .risk import api as risk_ns
 from .alerts import api as alerts_ns
 from .regulatory import api as regulatory_api
+from .notifications import api as notifications_api
 
 # Import service functions
 from ..services.transaction_service import (
@@ -270,3 +271,4 @@ api.add_namespace(compliance_ns)
 api.add_namespace(risk_ns)
 api.add_namespace(alerts_ns)
 api.add_namespace(regulatory_api)
+api.add_namespace(notifications_api)

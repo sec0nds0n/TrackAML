@@ -20,6 +20,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast'
 import * as api from '@/services/api'
 import { searchUsers } from '@/services/api'
+import { downloadCasePDF } from '@/services/api'
 
 
 // Stores and routing
@@ -52,41 +53,7 @@ const visOptions = ['internal','external']
 const commentsLoading = ref(false)
 const posting = ref(false)
 
-// Mock data for documents and notes
-const documents = ref([
-    {
-        id: 1,
-        name: 'Transaction_Report.pdf',
-        type: 'PDF',
-        size: '2.5 MB',
-        uploadedBy: 'System',
-        uploadedAt: new Date()
-    },
-    {
-        id: 2,
-        name: 'Wallet_Analysis.docx',
-        type: 'DOCX',
-        size: '1.2 MB',
-        uploadedBy: 'John Doe',
-        uploadedAt: new Date(Date.now() - 86400000)
-    }
-]);
-
-const notes = ref([
-    {
-        id: 1,
-        content: 'Initial review completed. Transaction pattern appears suspicious due to multiple small amounts being transferred in quick succession.',
-        user: 'John Doe',
-        timestamp: new Date(Date.now() - 3600000)
-    },
-    {
-        id: 2,
-        content: 'Requested additional documentation from the customer. Awaiting response.',
-        user: 'Jane Smith',
-        timestamp: new Date(Date.now() - 7200000)
-    }
-]);
-
+const documents = ref([]);
 // Computed properties
 const canEscalate = computed(() => {
     return (authStore.isL1Analyst || authStore.isAdmin) && 
@@ -116,6 +83,9 @@ const chain    = computed(() => caseData.value?.payload?.chain || caseData.value
 // Risk
 const riskScore = computed(() => caseData.value?.payload?.risk_score ?? null)
 const risks = computed(() => caseData.value?.payload?.risks || caseData.value?.risks || [])
+
+const activities = ref([]);
+const activitiesLoading = ref(false);
 
 function getCaseId() {
   // 1) ambil dari route (dukung :id atau :caseId)
@@ -165,6 +135,131 @@ function getCaretToken(text, caretPos) {
 
 const lastCaretPos = ref(0)
 
+const notes = ref([]);
+const notesLoading = ref(false);
+
+const editDialog = ref(false);
+const savingEdit = ref(false);
+const editForm = ref({
+  title: '',
+  description: '',
+  status: '',
+  severity: '',
+  priority: '',
+  typology: '',
+  tlp: '',
+  visibility: '',
+  sla_due_at: '',
+  tagsText: '',
+  reason: '',
+  source: '',
+});
+
+const sevOptions = ['Low','Medium','High','Critical'];
+const priOptions = ['P1','P2','P3','P4'];
+const tlpOptions = ['RED','AMBER','GREEN','WHITE'];
+const statusOptions = ['Under Review','Investigating','Pending','Resolved','Rejected','Dropped'];
+
+function openEdit() {
+  const c = caseData.value || {};
+  editForm.value = {
+    title: c.title || '',
+    description: c.details?.description || '',
+    status: c.status || '',
+    severity: c.riskLevel || '',
+    priority: c.details?.priority || '',
+    typology: c.details?.typology || '',
+    tlp: c.details?.tlp || '',
+    visibility: c.details?.visibility || '',
+    sla_due_at: c.details?.slaDue || '',
+    tagsText: (c.details?.tags || []).join(', '),
+    reason: c.details?.reason || '',
+    source: c.details?.source || '',
+  };
+  editDialog.value = true;
+}
+
+// === Reference ID (untuk header) ===
+const referenceId = computed(() =>
+  caseData.value?.details?.reference || caseData.value?.reference_id || ''
+)
+
+async function copyRef() {
+  const v = referenceId.value
+  if (!v) return
+  try {
+    await navigator.clipboard.writeText(String(v))
+    toast.add({ severity: 'success', summary: 'Copied', detail: 'Reference ID disalin', life: 1500 })
+  } catch {
+    toast.add({ severity: 'warn', summary: 'Copy gagal', life: 1500 })
+  }
+}
+
+async function saveEdit() {
+  const cid = getCaseId();
+  if (!cid) return;
+
+  const payload = {
+    title: editForm.value.title || null,
+    description: editForm.value.description || null,
+    status: editForm.value.status || null,
+    severity: editForm.value.severity || null,
+    priority: editForm.value.priority || null,
+    typology: editForm.value.typology || null,
+    tlp: editForm.value.tlp || null,
+    visibility: editForm.value.visibility || null,
+    sla_due_at: editForm.value.sla_due_at || null,
+    tags: editForm.value.tagsText.split(',').map(s => s.trim()).filter(Boolean),
+    reason: editForm.value.reason || null,
+    source: editForm.value.source || null,
+  };
+
+  savingEdit.value = true;
+  try {
+    await api.updateCase(cid, payload);
+    try {
+      await api.request(`/cases/${cid}/activity`, {
+        method: 'POST',
+        body: {
+          action: 'Case Updated',
+          kind: 'update',
+          comment: summarizeChanges(payload),
+        }
+      });
+    } catch (logErr) {
+      console.debug('Activity log (update) skipped:', logErr?.message || logErr);
+    }
+    editDialog.value = false;
+    await loadCaseData();
+    await loadActivity();
+    toast.add({ severity: 'success', summary: 'Case updated', life: 1500 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Update failed', detail: e?.message || 'Gagal menyimpan', life: 2500 });
+  } finally {
+    savingEdit.value = false;
+  }
+}
+
+async function loadNotes() {
+  const cid = getCaseId();
+  if (!cid) return;
+  notesLoading.value = true;
+  try {
+    const rows = await api.getCaseNotes(cid);
+    notes.value = (rows || []).map(r => ({
+      id: r.id,
+      user: r.username || 'User',
+      timestamp: r.created_at,
+      content: r.body,
+      visibility: r.visibility
+    }));
+  } catch (e) {
+    toast.add({ severity: 'warn', summary: 'Notes', detail: e?.message || 'Load failed', life: 2000 });
+  } finally {
+    notesLoading.value = false;
+  }
+}
+
 async function loadCandidates() {
   assignLoading.value = true
   try {
@@ -194,6 +289,7 @@ async function doAssign() {
     })
     assignDialog.value = false
     try { await loadCaseData() } catch {}
+    await loadActivity();
     toast.add({
       severity: 'success',
       summary: 'Assigned',
@@ -348,6 +444,8 @@ function mapCaseToView(c) {
       reference: c.reference_id,
       caseType: c.case_type,
       slaDue: c.sla_due_at,
+      reason: c.reason || payload.reason || null,
+      source: c.source || payload.source || null,
     },
 
     // simpan list agar bisa ditampilkan sebagai chips
@@ -449,52 +547,52 @@ const rejectCase = async () => {
     }
 };
 
-const editCase = () => {
-    // Navigate to edit case page or open edit dialog
-    console.log('Edit case functionality');
-};
+const editCase = openEdit;
 
-const addNote = () => {
-    if (newNoteContent.value.trim()) {
-        notes.value.unshift({
-            id: Date.now(),
-            content: newNoteContent.value,
-            user: authStore.currentUser?.email || 'Current User',
-            timestamp: new Date()
-        });
-        
-        newNoteContent.value = '';
-        showAddNoteDialog.value = false;
-    }
+const addNote = async () => {
+  const content = (newNoteContent.value || '').trim();
+  if (!content) return;
+  try {
+    await api.addCaseNote(getCaseId(), { body: content, visibility: 'internal' });
+    newNoteContent.value = '';
+    showAddNoteDialog.value = false;
+    await loadNotes();
+    await loadActivity(); // opsional, kalau activity juga menampilkan Note Added
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Notes', detail: e?.message || 'Gagal menambah note', life: 2500 });
+  }
 };
 
 const onFileSelect = (event) => {
-    selectedFile.value = event.files[0];
+  const f = event?.files?.[0] || event?.originalEvent?.target?.files?.[0] || null;
+  selectedFile.value = f;
 };
 
-const uploadDocument = () => {
-    if (selectedFile.value) {
-        documents.value.unshift({
-            id: Date.now(),
-            name: selectedFile.value.name,
-            type: selectedFile.value.name.split('.').pop().toUpperCase(),
-            size: (selectedFile.value.size / 1024 / 1024).toFixed(2) + ' MB',
-            uploadedBy: authStore.currentUser?.email || 'Current User',
-            uploadedAt: new Date()
-        });
-        
-        selectedFile.value = null;
-        documentDescription.value = '';
-        showUploadDialog.value = false;
-    }
-};
-
-const downloadDocument = (document) => {
-    console.log('Download document:', document.name);
-};
-
-const previewDocument = (document) => {
-    console.log('Preview document:', document.name);
+const uploadDocument = async () => {
+  const cid = getCaseId();
+  if (!cid) {
+    toast.add({ severity: 'warn', summary: 'Upload', detail: 'Case ID tidak ditemukan', life: 2000 });
+    return;
+  }
+  if (!selectedFile.value) {
+    toast.add({ severity: 'warn', summary: 'Upload', detail: 'Pilih file dulu', life: 1500 });
+    return;
+  }
+  try {
+    await api.uploadCaseAttachment(cid, selectedFile.value, {
+      description: (documentDescription.value || '').trim(),
+      // tlp: 'GREEN',
+      // visibility: 'internal',
+    });
+    toast.add({ severity: 'success', summary: 'Upload', detail: 'Dokumen terunggah', life: 1500 });
+    selectedFile.value = null;
+    documentDescription.value = '';
+    showUploadDialog.value = false;
+    await loadAttachments();
+    await loadActivity();
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Upload', detail: e?.message || 'Gagal upload', life: 2500 });
+  }
 };
 
 // Utility functions
@@ -533,9 +631,18 @@ const copyToClipboard = async (text) => {
     }
 };
 
-const exportCase = () => {
-    // Export case data as PDF or JSON
-    console.log('Exporting case:', caseData.value?.id);
+const exportCase = async () => {
+  const cid = getCaseId();
+  if (!cid) {
+    toast.add({ severity: 'warn', summary: 'Export', detail: 'Case ID tidak ditemukan', life: 2000 });
+    return;
+  }
+  try {
+    await downloadCasePDF(cid);
+    toast.add({ severity: 'success', summary: 'Export', detail: 'PDF terunduh', life: 1200 });
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Export gagal', detail: e?.message || 'Gagal mengunduh PDF', life: 2500 });
+  }
 };
 
 const showMoreOptions = () => {
@@ -683,6 +790,7 @@ async function postComment() {
     const created = await api.addCaseComment(cid, { body, visibility: commentVis.value })
     commentBody.value = ''
     await loadComments()
+    await loadActivity();
 
     // kirim notifikasi mention (optional)
     const usernames = extractMentions(optimistic.body)
@@ -705,6 +813,43 @@ async function postComment() {
   }
 }
 
+// === ATTACHMENTS ===
+async function loadAttachments() {
+  const cid = getCaseId();
+  if (!cid) return;
+  try {
+    const rows = await api.getCaseAttachments(cid);
+    documents.value = (rows || []).map((r) => ({
+      id: r.id,
+      name: r.filename,
+      type: ((r.mime_type || r.content_type || '').split('/').pop() || '').toUpperCase() || '-',
+      size: r.size_bytes != null ? `${(Number(r.size_bytes) / (1024 * 1024)).toFixed(2)} MB` : '-',
+      uploadedBy: '-', // nanti bisa di-join username dari backend
+      uploadedAt: r.created_at,
+      download_url: r.download_url || `/api/cases/${cid}/attachments/${r.id}/download`,
+      description: r.description,
+      tlp: r.tlp,
+      visibility: r.visibility,
+    }));
+  } catch (e) {
+    toast.add({ severity: 'warn', summary: 'Attachments', detail: e?.message || 'Load failed', life: 2000 });
+  }
+}
+
+const downloadDocument = (doc) => {
+  if (doc?.download_url) {
+    // URL sudah relatif (mis. /api/cases/:id/attachments/:att_id/download)
+    window.open(doc.download_url, '_blank', 'noopener');
+  } else {
+    toast.add({ severity: 'warn', summary: 'Download', detail: 'URL tidak tersedia', life: 1500 });
+  }
+};
+
+const previewDocument = (doc) => {
+  // sementara sama dengan download (bisa diganti viewer PDF khusus jika perlu)
+  downloadDocument(doc);
+};
+
 // Copy ke clipboard
 async function copyText(txt) {
   try {
@@ -715,21 +860,32 @@ async function copyText(txt) {
   }
 }
 
-function buildExplorerUrl(kind, value, chain) {
-  if (!value) return null
-  const c = (chain || '').toLowerCase()
-  const host =
-    c.includes('bsc') ? 'https://bscscan.com' :
-    c.includes('polygon') ? 'https://polygonscan.com' :
-    'https://etherscan.io'
-  return kind === 'tx' ? `${host}/tx/${value}` : `${host}/address/${value}`
+async function loadActivity() {
+  const cid = getCaseId();
+  if (!cid) return;
+  activitiesLoading.value = true;
+  try {
+    const rows = await api.getCaseActivity(cid); // fungsi baru di services/api.js
+    // map ke bentuk yang dipakai <Timeline>
+    activities.value = (rows || []).map(r => ({
+      action: r.action,
+      user: r.user,
+      timestamp: r.timestamp,
+      comment: r.comment,
+      kind: r.kind
+    }));
+  } catch (e) {
+    toast.add({ severity: 'warn', summary: 'Activity', detail: e?.message || 'Load failed', life: 2000 });
+  } finally {
+    activitiesLoading.value = false;
+  }
 }
-// Shorten hash/address agar tidak kepanjangan
-function shorten(v, head = 10, tail = 6) {
-  if (!v) return '-'
-  const s = String(v)
-  if (s.length <= head + tail + 3) return s
-  return `${s.slice(0, head)}…${s.slice(-tail)}`
+
+function summarizeChanges(payload) {
+  const touched = Object.entries(payload)
+    .filter(([_, v]) => v !== null && v !== '' && !(Array.isArray(v) && v.length === 0))
+    .map(([k]) => k.replace(/_/g, ' '));
+  return touched.length ? `Updated fields: ${touched.join(', ')}` : 'Case metadata updated';
 }
 
 function onCommentKeydown(e) {
@@ -741,11 +897,14 @@ function onCommentKeydown(e) {
 
 // Lifecycle
 onMounted(loadCaseData);
-onMounted(loadComments)
+onMounted(loadComments);
+onMounted(loadAttachments);
+onMounted(loadActivity);
+onMounted(loadNotes);
 
 watch(
   () => [route.params.id, route.params.caseId, route.query?.id],
-  () => { loadCaseData(); loadComments() }
+  () => { loadCaseData(); loadComments(); loadAttachments(); loadActivity(); loadNotes();}
 )
 </script>
 
@@ -774,8 +933,34 @@ watch(
                 <!-- Case Title & Meta -->
                 <div class="case-meta-section">
                     <div class="case-title-group">
-                        <h1 class="modern-case-id">{{ caseData?.id }} — {{ caseData?.title || shortRef(caseData?.details?.reference) }}</h1>
-                        <p class="case-subtitle">{{ caseData?.details?.description }}</p>
+                        <h1 class="modern-case-id">
+                            {{ caseData?.id }} — {{ caseData?.title || shortRef(caseData?.details?.reference) }}
+                        </h1>
+
+                        <!-- Reference ID row -->
+                        <div class="flex items-center gap-2 mt-1">
+                            <span class="text-xs text-gray-500">Reference ID</span>
+                            <code
+                            class="font-mono break-all px-2 py-1 bg-gray-50 border rounded"
+                            :title="referenceId"
+                            >
+                            {{ referenceId || '—' }}
+                            </code>
+                            <Button
+                            icon="pi pi-copy"
+                            size="small"
+                            text
+                            rounded
+                            v-tooltip.top="'Copy Reference ID'"
+                            @click="copyRef"
+                            />
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 mt-2">
+                            <Tag v-if="caseData?.details?.source" :value="`Source: ${caseData.details.source}`" severity="info" class="modern-tag" />
+                            <span v-if="caseData?.details?.reason" class="text-sm text-gray-700">
+                            <strong>Reason:</strong> {{ caseData.details.reason }}
+                            </span>
+                        </div>
                     </div>
                     
                     <!-- Status Pills -->
@@ -1072,29 +1257,40 @@ watch(
                         <TabPanel header="Activity Timeline">
                             <div class="tab-content">
                                 <div class="section-header">
-                                    <h3>Case Activity</h3>
+                                <h3>Case Activity</h3>
                                 </div>
-                                <div class="timeline-container">
-                                    <Timeline :value="caseData?.activities || []" class="custom-timeline">
-                                        <template #marker="slotProps">
-                                            <div class="timeline-marker"
-                                                 :style="{ backgroundColor: getActivityColor(slotProps.item.action) }">
-                                                <i :class="getActivityIcon(slotProps.item.action)"></i>
-                                            </div>
-                                        </template>
-                                        <template #content="slotProps">
-                                            <div class="timeline-content">
-                                                <div class="timeline-action">{{ slotProps.item.action }}</div>
-                                                <div class="timeline-meta">
-                                                    by {{ slotProps.item.user }} • {{ formatDateTime(slotProps.item.timestamp) }}
-                                                </div>
-                                                <div v-if="slotProps.item.comment" 
-                                                     class="timeline-comment">
-                                                    {{ slotProps.item.comment }}
-                                                </div>
-                                            </div>
-                                        </template>
-                                    </Timeline>
+
+                                <div v-if="activitiesLoading" class="mt-3 space-y-2">
+                                <div class="animate-pulse h-4 w-3/4 surface-300 rounded"></div>
+                                <div class="animate-pulse h-4 w-2/3 surface-300 rounded"></div>
+                                <div class="animate-pulse h-4 w-1/2 surface-300 rounded"></div>
+                                </div>
+
+                                <div v-else-if="!activities.length" class="text-sm text-color-secondary mt-3">
+                                Belum ada aktivitas.
+                                </div>
+
+                                <div v-else class="timeline-container">
+                                <Timeline :value="activities" class="custom-timeline">
+                                    <template #marker="slotProps">
+                                    <div
+                                        class="timeline-marker"
+                                        :style="{ backgroundColor: getActivityColor(slotProps.item.action) }">
+                                        <i :class="getActivityIcon(slotProps.item.action)"></i>
+                                    </div>
+                                    </template>
+                                    <template #content="slotProps">
+                                    <div class="timeline-content">
+                                        <div class="timeline-action">{{ slotProps.item.action }}</div>
+                                        <div class="timeline-meta">
+                                        by {{ slotProps.item.user }} • {{ formatDateTime(slotProps.item.timestamp) }}
+                                        </div>
+                                        <div v-if="slotProps.item.comment" class="timeline-comment">
+                                        {{ slotProps.item.comment }}
+                                        </div>
+                                    </div>
+                                    </template>
+                                </Timeline>
                                 </div>
                             </div>
                         </TabPanel>
@@ -1113,19 +1309,13 @@ watch(
                                 </div>
 
                                 <div class="notes-container">
-                                    <div v-for="note in notes" 
-                                         :key="note.id"
-                                         class="note-item">
+                                    <div v-for="note in notes" :key="note.id" class="note-item">
                                         <div class="note-header">
-                                            <div class="note-author">
-                                                <Avatar 
-                                                    :label="getInitials(note.user)"
-                                                    size="small"
-                                                    shape="circle" 
-                                                    class="note-avatar" />
-                                                <span class="author-name">{{ note.user }}</span>
-                                            </div>
-                                            <small class="note-timestamp">{{ formatDateTime(note.timestamp) }}</small>
+                                        <div class="note-author">
+                                            <Avatar :label="getInitials(note.user)" size="small" shape="circle" class="note-avatar" />
+                                            <span class="author-name">{{ note.user }}</span>
+                                        </div>
+                                        <small class="note-timestamp">{{ formatDateTime(note.timestamp) }}</small>
                                         </div>
                                         <div class="note-content">{{ note.content }}</div>
                                     </div>
@@ -1340,6 +1530,71 @@ watch(
                 </div>
             </template>
         </Dialog>
+
+        <Dialog v-model:visible="editDialog"
+                    header="Edit Case"
+                    :modal="true"
+                    :style="{ width: '90vw', maxWidth: '640px' }">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                <label class="field-label">Title</label>
+                <InputText v-model="editForm.title" class="w-full"/>
+                </div>
+                <div>
+                <label class="field-label">Status</label>
+                <Dropdown v-model="editForm.status" :options="statusOptions" class="w-full"/>
+                </div>
+
+                <div class="md:col-span-2">
+                <label class="field-label">Description</label>
+                <Textarea v-model="editForm.description" rows="3" class="w-full"/>
+                </div>
+
+                <div>
+                <label class="field-label">Severity</label>
+                <Dropdown v-model="editForm.severity" :options="sevOptions" class="w-full"/>
+                </div>
+                <div>
+                <label class="field-label">Priority</label>
+                <Dropdown v-model="editForm.priority" :options="priOptions" class="w-full"/>
+                </div>
+                <div>
+                <label class="field-label">Typology</label>
+                <InputText v-model="editForm.typology" class="w-full"/>
+                </div>
+                <div>
+                <label class="field-label">TLP</label>
+                <Dropdown v-model="editForm.tlp" :options="tlpOptions" class="w-full"/>
+                </div>
+                <div>
+                <label class="field-label">Visibility</label>
+                <Dropdown v-model="editForm.visibility" :options="visOptions" class="w-full"/>
+                </div>
+                <div>
+                <label class="field-label">SLA Due</label>
+                <InputText v-model="editForm.sla_due_at" placeholder="YYYY-MM-DDTHH:mm:ssZ" class="w-full"/>
+                </div>
+                <div class="md:col-span-2">
+                <label class="field-label">Tags (comma separated)</label>
+                <InputText v-model="editForm.tagsText" class="w-full" placeholder="tag1, tag2, ..."/>
+                </div>
+                <div>
+                <label class="field-label">Reason</label>
+                <InputText v-model="editForm.reason" class="w-full"/>
+                </div>
+                <div>
+                <label class="field-label">Source</label>
+                <InputText v-model="editForm.source" class="w-full"/>
+                </div>
+            </div>
+
+            <template #footer>
+                <div class="flex justify-end gap-2">
+                <Button label="Cancel" severity="secondary" outlined @click="editDialog=false"/>
+                <Button label="Save" :loading="savingEdit" @click="saveEdit"/>
+                </div>
+            </template>
+            </Dialog>
     </div>
 </template>
 

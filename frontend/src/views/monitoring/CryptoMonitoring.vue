@@ -20,6 +20,7 @@ import { ref, onMounted, computed, reactive } from 'vue';
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import Calendar from 'primevue/calendar'
 
 // Use the composable
 const {
@@ -981,6 +982,7 @@ onMounted(() => {
             <label class="block text-sm mb-2">SLA Due</label>
             <Calendar v-model="caseForm.sla_due_at" showTime hourFormat="24" showIcon dateFormat="yy-mm-dd" class="w-full"/>
             </div>
+            
             <div class="field col-12">
                 <div class="flex items-center gap-2">
                     <Checkbox v-model="caseForm.assignToMe" :binary="true" inputId="assignme" />
@@ -988,7 +990,7 @@ onMounted(() => {
                 </div>
             </div>
             <div v-if="createError" class="col-12">
-            <small class="p-error">{{ createError }}</small>
+                <small class="p-error">{{ createError }}</small>
             </div>
         </div>
 

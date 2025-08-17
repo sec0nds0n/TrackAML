@@ -237,27 +237,82 @@ export const getCaseAttachments = (id) => request(`/cases/${id}/attachments`);
 export const uploadCaseAttachment = (id, file, meta = {}) => {
   const fd = new FormData();
   fd.append('file', file);
-  Object.entries(meta).forEach(([k, v]) => fd.append(k, v ?? ''));
-  // request() sudah mendeteksi FormData (lihat patch di bawah)
+  Object.entries(meta).forEach(([k, v]) => {
+    if (v != null && v !== '') fd.append(k, v);
+  });
   return request(`/cases/${id}/attachments`, { method: 'POST', body: fd });
 };
 export const searchUsers = (q) =>
    request(`/users/search?q=${encodeURIComponent(q)}`, { method: 'GET' });
 
 export async function getNotifications() {
-  return request('GET', '/api/notifications?limit=20')
+  return request('/notifications?limit=20', { method: 'GET' });
 }
 export async function readNotifications() {
-  return request('PUT', '/api/notifications/read-all')
+  return request('/notifications/read-all', { method: 'PUT' });
 }
 
 export async function notifyMentions(payload) {
-  // Harapannya ada endpoint POST /api/cases/:id/comments/mentions
-  // Jika belum ada, bisa sementara diarahkan ke /api/notifications/mention
   try {
-    return await request('POST', `/api/notifications/mention`, payload)
+    return request('/notifications/mention', { method: 'POST', body: payload })
   } catch (e) {
     // biarkan diam (opsional)
     throw e
   }
+}
+
+export const getCaseActivity = (id) =>
+  request(`/cases/${id}/activity`, { method: 'GET' });
+
+export const getCaseNotes = (id) =>
+  request(`/cases/${id}/notes`);
+
+export const addCaseNote = (id, { body, visibility = 'internal' } = {}) =>
+  request(`/cases/${id}/notes`, { method: 'POST', body: { body, visibility } });
+
+export const updateCase = (id, data) =>
+  request(`/cases/${id}`, { method: 'PATCH', body: data });
+
+// --- CASE EXPORT (PDF) ---
+export async function downloadCasePDF(caseId) {
+  const url = joinURL(BASE, `/cases/${caseId}/export.pdf`);
+
+  // header minimal, tambah CSRF kalau tersedia
+  const headers = { Accept: 'application/pdf' };
+  try {
+    const token = await fetchCsrfToken();
+    if (token) {
+      headers['X-CSRF-Token']  = token;
+      headers['X-CSRFToken']   = token;
+      headers['X-XSRF-TOKEN']  = token;
+    }
+  } catch (_) {}
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers,
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    let msg = '';
+    try {
+      const data = await res.json();
+      msg = data?.message || data?.detail || data?.error;
+    } catch {
+      try { msg = await res.text(); } catch {}
+    }
+    const err = new Error(msg || `Export failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `CASE-${caseId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(a.href);
+  a.remove();
 }
