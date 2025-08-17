@@ -13,10 +13,11 @@ export const useAuthStore = defineStore('auth', {
   getters: {
     role: (s) => s.user?.role || null,
     permissions: (s) => s.user?.permissions || [],
-    isAdmin: (s) => s.user?.role === 'admin',
-    isL1Analyst: (s) => s.user?.role === 'analyst_L1',
-    isL2Analyst: (s) => s.user?.role === 'analyst_L2',
-    isExchanger: (s) => s.user?.role === 'Exchanger', // cek huruf besar/kecil sesuai backend
+    isAdmin:     (s) => (s.user?.role || '').toLowerCase() === 'admin',
+    isL1Analyst: (s) => (s.user?.role || '').toLowerCase() === 'analyst_l1',
+    isL2Analyst: (s) => (s.user?.role || '').toLowerCase() === 'analyst_l2',
+    isExchanger: (s) => (s.user?.role || '').toLowerCase() === 'exchanger',
+    isAph: (s) => (s.user?.role || '').toLowerCase() === 'aph',
     hasPermission: (s) => (p) => !!s.user?.permissions?.includes(p),
     canRead: (s) => !!s.user?.permissions?.includes('read'),
     canWrite: (s) => !!s.user?.permissions?.includes('write'),

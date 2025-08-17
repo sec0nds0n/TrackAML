@@ -7,12 +7,6 @@
                     <div class="header-main">
                         <div class="header-left">
                             <div class="title-section">
-                                <div class="icon-container">
-                                    <div class="header-icon-wrapper">
-                                        <i class="pi pi-shield header-icon"></i>
-                                        <div class="icon-glow"></div>
-                                    </div>
-                                </div>
                                 <div class="title-content">
                                     <h1 class="page-title">Case Management</h1>
                                     <p class="page-subtitle">Advanced AML monitoring and compliance oversight</p>
@@ -206,665 +200,167 @@
                             @click="fetchAnomalies" />
                     </div>
                 </div>
-
-                <!-- Enhanced Statistics Dashboard -->
-                <div class="stats-dashboard">
-                    <div class="stats-grid">
-                        <div class="modern-stat-card l1-review" @click="filterByStatus('pending_l1')">
-                            <div class="stat-header">
-                                <div class="stat-icon-wrapper">
-                                    <i class="pi pi-clock stat-icon"></i>
-                                </div>
-                                <div class="stat-actions">
-                                    <Button 
-                                        icon="pi pi-external-link" 
-                                        class="p-button-text p-button-sm"
-                                        v-tooltip.top="'View L1 cases'" />
-                                </div>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-main">
-                                    <span class="stat-number">{{ caseStats.pendingL1 }}</span>
-                                    <span class="stat-change positive">
-                                        <i class="pi pi-arrow-up"></i>
-                                        <span>+15%</span>
-                                    </span>
-                                </div>
-                                <div class="stat-label">Pending L1 Review</div>
-                                <div class="stat-sublabel">Awaiting first-level analysis</div>
-                            </div>
-                            <div class="stat-chart">
-                                <div class="mini-chart l1-chart">
-                                    <div class="chart-bar" style="height: 20%"></div>
-                                    <div class="chart-bar" style="height: 45%"></div>
-                                    <div class="chart-bar" style="height: 30%"></div>
-                                    <div class="chart-bar" style="height: 60%"></div>
-                                    <div class="chart-bar" style="height: 80%"></div>
-                                    <div class="chart-bar" style="height: 100%"></div>
-                                    <div class="chart-bar" style="height: 75%"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="modern-stat-card l2-review" @click="filterByStatus('pending_l2')">
-                            <div class="stat-header">
-                                <div class="stat-icon-wrapper">
-                                    <i class="pi pi-users stat-icon"></i>
-                                </div>
-                                <div class="stat-actions">
-                                    <Button 
-                                        icon="pi pi-external-link" 
-                                        class="p-button-text p-button-sm"
-                                        v-tooltip.top="'View L2 cases'" />
-                                </div>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-main">
-                                    <span class="stat-number">{{ caseStats.pendingL2 }}</span>
-                                    <span class="stat-change negative">
-                                        <i class="pi pi-arrow-down"></i>
-                                        <span>-8%</span>
-                                    </span>
-                                </div>
-                                <div class="stat-label">Pending L2 Review</div>
-                                <div class="stat-sublabel">Senior analyst evaluation</div>
-                            </div>
-                            <div class="stat-chart">
-                                <div class="mini-chart l2-chart">
-                                    <div class="chart-bar" style="height: 60%"></div>
-                                    <div class="chart-bar" style="height: 40%"></div>
-                                    <div class="chart-bar" style="height: 70%"></div>
-                                    <div class="chart-bar" style="height: 30%"></div>
-                                    <div class="chart-bar" style="height: 50%"></div>
-                                    <div class="chart-bar" style="height: 25%"></div>
-                                    <div class="chart-bar" style="height: 35%"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="modern-stat-card anomalies urgent" @click="filterByPriority('high')">
-                            <div class="stat-header">
-                                <div class="stat-icon-wrapper urgent">
-                                    <i class="pi pi-exclamation-triangle stat-icon"></i>
-                                </div>
-                                <div class="stat-actions">
-                                    <Button 
-                                        icon="pi pi-external-link" 
-                                        class="p-button-text p-button-sm"
-                                        v-tooltip.top="'View anomalies'" />
-                                </div>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-main">
-                                    <span class="stat-number urgent">{{ caseStats.anomalies }}</span>
-                                    <span class="stat-change urgent">
-                                        <i class="pi pi-arrow-up"></i>
-                                        <span>+23%</span>
-                                    </span>
-                                </div>
-                                <div class="stat-label">High Risk Anomalies</div>
-                                <div class="stat-sublabel">Require immediate attention</div>
-                            </div>
-                            <div class="stat-chart">
-                                <div class="mini-chart anomaly-chart">
-                                    <div class="chart-bar" style="height: 30%"></div>
-                                    <div class="chart-bar" style="height: 45%"></div>
-                                    <div class="chart-bar" style="height: 60%"></div>
-                                    <div class="chart-bar" style="height: 80%"></div>
-                                    <div class="chart-bar" style="height: 100%"></div>
-                                    <div class="chart-bar" style="height: 90%"></div>
-                                    <div class="chart-bar" style="height: 95%"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="modern-stat-card blacklisted" @click="filterByType('blacklisted')">
-                            <div class="stat-header">
-                                <div class="stat-icon-wrapper">
-                                    <i class="pi pi-ban stat-icon"></i>
-                                </div>
-                                <div class="stat-actions">
-                                    <Button 
-                                        icon="pi pi-external-link" 
-                                        class="p-button-text p-button-sm"
-                                        v-tooltip.top="'View blacklisted wallets'" />
-                                </div>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-main">
-                                    <span class="stat-number">{{ caseStats.blacklisted }}</span>
-                                    <span class="stat-change neutral">
-                                        <i class="pi pi-minus"></i>
-                                        <span>0%</span>
-                                    </span>
-                                </div>
-                                <div class="stat-label">Blacklisted Wallets</div>
-                                <div class="stat-sublabel">Blocked from transactions</div>
-                            </div>
-                            <div class="stat-chart">
-                                <div class="mini-chart blacklist-chart">
-                                    <div class="chart-bar" style="height: 40%"></div>
-                                    <div class="chart-bar" style="height: 40%"></div>
-                                    <div class="chart-bar" style="height: 45%"></div>
-                                    <div class="chart-bar" style="height: 42%"></div>
-                                    <div class="chart-bar" style="height: 38%"></div>
-                                    <div class="chart-bar" style="height: 40%"></div>
-                                    <div class="chart-bar" style="height: 41%"></div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Additional Insight Cards -->
-                        <div class="modern-stat-card completion-rate" @click="showCompletionAnalytics">
-                            <div class="stat-header">
-                                <div class="stat-icon-wrapper success">
-                                    <i class="pi pi-check-circle stat-icon"></i>
-                                </div>
-                                <div class="stat-actions">
-                                    <Button 
-                                        icon="pi pi-chart-bar" 
-                                        class="p-button-text p-button-sm"
-                                        v-tooltip.top="'View completion analytics'" />
-                                </div>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-main">
-                                    <span class="stat-number">94.2%</span>
-                                    <span class="stat-change positive">
-                                        <i class="pi pi-arrow-up"></i>
-                                        <span>+2.3%</span>
-                                    </span>
-                                </div>
-                                <div class="stat-label">Resolution Rate</div>
-                                <div class="stat-sublabel">Cases closed successfully</div>
-                            </div>
-                            <div class="progress-ring">
-                                <svg class="progress-ring-svg" width="50" height="50">
-                                    <circle 
-                                        class="progress-ring-circle-bg" 
-                                        stroke="#e5e7eb" 
-                                        stroke-width="4" 
-                                        fill="transparent" 
-                                        r="18" 
-                                        cx="25" 
-                                        cy="25"/>
-                                    <circle 
-                                        class="progress-ring-circle" 
-                                        stroke="#10b981" 
-                                        stroke-width="4" 
-                                        fill="transparent" 
-                                        r="18" 
-                                        cx="25" 
-                                        cy="25"
-                                        :stroke-dasharray="circumference"
-                                        :stroke-dashoffset="circumference - (94.2 / 100) * circumference"/>
-                                </svg>
-                            </div>
-                        </div>
-
-                        <div class="modern-stat-card avg-time" @click="showTimeAnalytics">
-                            <div class="stat-header">
-                                <div class="stat-icon-wrapper">
-                                    <i class="pi pi-stopwatch stat-icon"></i>
-                                </div>
-                                <div class="stat-actions">
-                                    <Button 
-                                        icon="pi pi-clock" 
-                                        class="p-button-text p-button-sm"
-                                        v-tooltip.top="'View time analytics'" />
-                                </div>
-                            </div>
-                            <div class="stat-content">
-                                <div class="stat-main">
-                                    <span class="stat-number">2.4d</span>
-                                    <span class="stat-change positive">
-                                        <i class="pi pi-arrow-down"></i>
-                                        <span>-18%</span>
-                                    </span>
-                                </div>
-                                <div class="stat-label">Avg Resolution Time</div>
-                                <div class="stat-sublabel">Days to case closure</div>
-                            </div>
-                            <div class="time-visualization">
-                                <div class="time-segments">
-                                    <div class="time-segment" style="width: 30%; background: #10b981;"></div>
-                                    <div class="time-segment" style="width: 25%; background: #f59e0b;"></div>
-                                    <div class="time-segment" style="width: 20%; background: #ef4444;"></div>
-                                    <div class="time-segment" style="width: 25%; background: #6b7280;"></div>
-                                </div>
-                                <div class="time-labels">
-                                    <span class="time-label">L1</span>
-                                    <span class="time-label">L2</span>
-                                    <span class="time-label">Review</span>
-                                    <span class="time-label">Close</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Enhanced Filters Panel -->
-                <div class="filters-panel">
-                    <div class="filters-header">
-                        <div class="filters-title">
-                            <h4 class="title">Smart Filters</h4>
-                            <p class="subtitle">Refine your case view with intelligent filtering</p>
-                        </div>
-                        <div class="filters-actions">
-                            <Button 
-                                icon="pi pi-filter-slash" 
-                                label="Clear All" 
-                                class="p-button-text clear-filters-btn"
-                                @click="clearAllFilters"
-                                v-if="hasActiveFilters" />
-                            <Button 
-                                icon="pi pi-bookmark" 
-                                label="Save Filter" 
-                                class="p-button-outlined save-filter-btn"
-                                @click="saveCurrentFilter" />
-                        </div>
-                    </div>
-
-                    <!-- Quick Filter Pills -->
-                    <div class="quick-filters" v-if="quickFilters.length > 0">
-                        <span class="quick-filters-label">Quick Filters:</span>
-                        <div class="filter-pills">
-                            <div 
-                                v-for="filter in quickFilters" 
-                                :key="filter.id"
-                                class="filter-pill"
-                                :class="{ 'active': filter.active }"
-                                @click="toggleQuickFilter(filter)">
-                                <i :class="filter.icon"></i>
-                                <span>{{ filter.label }}</span>
-                                <span class="filter-count">{{ filter.count }}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Main Filters -->
-                    <div class="main-filters">
-                        <!-- Search with Advanced Features -->
-                        <div class="search-container">
-                            <div class="search-input-wrapper">
-                                <i class="pi pi-search search-icon"></i>
-                                <InputText 
-                                    v-model="searchTerm" 
-                                    placeholder="Search cases, wallets, or keywords..." 
-                                    class="smart-search-input"
-                                    @keyup.enter="performSearch" />
-                                <Button 
-                                    v-if="searchTerm" 
-                                    icon="pi pi-times" 
-                                    class="p-button-text clear-search-btn"
-                                    @click="clearSearch" />
-                            </div>
-                            <div class="search-suggestions" v-if="showSearchSuggestions && searchSuggestions.length > 0">
-                                <div 
-                                    v-for="suggestion in searchSuggestions" 
-                                    :key="suggestion.id"
-                                    class="search-suggestion"
-                                    @click="selectSuggestion(suggestion)">
-                                    <i :class="suggestion.icon"></i>
-                                    <span class="suggestion-text">{{ suggestion.text }}</span>
-                                    <span class="suggestion-type">{{ suggestion.type }}</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Filter Controls -->
-                        <div class="filter-controls">
-                            <div class="filter-row">
-                                <div class="filter-group">
-                                    <label class="filter-label">Status</label>
-                                    <MultiSelect 
-                                        v-model="selectedStatus" 
-                                        :options="statusOptions" 
-                                        optionLabel="label" 
-                                        placeholder="Select statuses" 
-                                        class="modern-multiselect"
-                                        :maxSelectedLabels="2"
-                                        display="chip">
-                                        <template #option="slotProps">
-                                            <div class="filter-option">
-                                                <Tag 
-                                                    :value="slotProps.option.label"
-                                                    :severity="getStatusSeverity(slotProps.option.value)"
-                                                    class="option-tag" />
-                                                <span class="option-count">({{ slotProps.option.count }})</span>
-                                            </div>
-                                        </template>
-                                    </MultiSelect>
-                                </div>
-
-                                <div class="filter-group">
-                                    <label class="filter-label">Priority</label>
-                                    <Dropdown 
-                                        v-model="selectedPriority" 
-                                        :options="priorityOptions" 
-                                        optionLabel="label" 
-                                        placeholder="All priorities" 
-                                        class="modern-dropdown"
-                                        showClear>
-                                        <template #option="slotProps">
-                                            <div class="filter-option">
-                                                <Tag 
-                                                    :value="slotProps.option.label"
-                                                    :severity="getPrioritySeverity(slotProps.option.value)"
-                                                    class="option-tag" />
-                                                <span class="option-count">({{ slotProps.option.count }})</span>
-                                            </div>
-                                        </template>
-                                    </Dropdown>
-                                </div>
-
-                                <div class="filter-group">
-                                    <label class="filter-label">Level</label>
-                                    <SelectButton 
-                                        v-model="selectedLevel" 
-                                        :options="levelButtonOptions" 
-                                        optionLabel="label" 
-                                        class="level-selector"
-                                        multiple />
-                                </div>
-
-                                <div class="filter-group">
-                                    <label class="filter-label">Cryptocurrency</label>
-                                    <MultiSelect 
-                                        v-model="selectedCrypto" 
-                                        :options="cryptoOptions" 
-                                        optionLabel="label" 
-                                        placeholder="Select cryptocurrencies" 
-                                        class="modern-multiselect crypto-selector"
-                                        :maxSelectedLabels="3"
-                                        display="chip">
-                                        <template #option="slotProps">
-                                            <div class="crypto-option">
-                                                <div class="crypto-icon">
-                                                    <i :class="getCryptoIcon(slotProps.option.value)"></i>
-                                                </div>
-                                                <span class="crypto-name">{{ slotProps.option.label }}</span>
-                                                <span class="crypto-count">({{ slotProps.option.count }})</span>
-                                            </div>
-                                        </template>
-                                    </MultiSelect>
-                                </div>
-                            </div>
-
-                            <div class="filter-row">
-                                <div class="filter-group date-group">
-                                    <label class="filter-label">Date Range</label>
-                                    <div class="date-filter-container">
-                                        <Calendar 
-                                            v-model="dateRange" 
-                                            selectionMode="range" 
-                                            placeholder="Select date range" 
-                                            class="modern-calendar"
-                                            showIcon 
-                                            showButtonBar
-                                            dateFormat="dd/mm/yy" />
-                                        <div class="date-presets">
-                                            <Button 
-                                                v-for="preset in datePresets"
-                                                :key="preset.label"
-                                                :label="preset.label"
-                                                class="p-button-text date-preset-btn"
-                                                @click="applyDatePreset(preset)" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="filter-group amount-group">
-                                    <label class="filter-label">Amount Range</label>
-                                    <div class="amount-filter-container">
-                                        <div class="amount-inputs">
-                                            <InputNumber 
-                                                v-model="amountRange.min" 
-                                                placeholder="Min amount" 
-                                                mode="currency" 
-                                                currency="USD"
-                                                class="amount-input" />
-                                            <span class="amount-separator">to</span>
-                                            <InputNumber 
-                                                v-model="amountRange.max" 
-                                                placeholder="Max amount" 
-                                                mode="currency" 
-                                                currency="USD"
-                                                class="amount-input" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="filter-group assignee-group">
-                                    <label class="filter-label">Assigned To</label>
-                                    <MultiSelect 
-                                        v-model="selectedAssignees" 
-                                        :options="assigneeOptions" 
-                                        optionLabel="name" 
-                                        placeholder="Select assignees" 
-                                        class="modern-multiselect assignee-selector"
-                                        :maxSelectedLabels="2"
-                                        display="chip">
-                                        <template #option="slotProps">
-                                            <div class="assignee-option">
-                                                <Avatar 
-                                                    :label="getInitials(slotProps.option.name)"
-                                                    size="small"
-                                                    shape="circle"
-                                                    :style="{ backgroundColor: getAvatarColor(slotProps.option.name) }" />
-                                                <span class="assignee-name">{{ slotProps.option.name }}</span>
-                                                <span class="assignee-role">{{ slotProps.option.role }}</span>
-                                            </div>
-                                        </template>
-                                    </MultiSelect>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Advanced Options Toggle -->
-                        <div class="advanced-toggle" v-if="!showAdvancedFilters">
-                            <Button 
-                                icon="pi pi-chevron-down" 
-                                label="Advanced Filters" 
-                                class="p-button-text advanced-toggle-btn"
-                                @click="showAdvancedFilters = true" />
-                        </div>
-
-                        <!-- Advanced Filters -->
-                        <div class="advanced-filters" v-if="showAdvancedFilters">
-                            <div class="advanced-filters-header">
-                                <h5>Advanced Filters</h5>
-                                <Button 
-                                    icon="pi pi-chevron-up" 
-                                    class="p-button-text"
-                                    @click="showAdvancedFilters = false" />
-                            </div>
-                            <div class="advanced-controls">
-                                <div class="filter-group">
-                                    <label class="filter-label">Risk Score Range</label>
-                                    <Slider 
-                                        v-model="riskScoreRange" 
-                                        :min="0" 
-                                        :max="100" 
-                                        range 
-                                        class="risk-score-slider" />
-                                    <div class="slider-labels">
-                                        <span>{{ riskScoreRange[0] }}%</span>
-                                        <span>{{ riskScoreRange[1] }}%</span>
-                                    </div>
-                                </div>
-                                <div class="filter-group">
-                                    <label class="filter-label">Source</label>
-                                    <MultiSelect 
-                                        v-model="selectedSources" 
-                                        :options="sourceOptions" 
-                                        optionLabel="label" 
-                                        placeholder="Select sources" 
-                                        class="modern-multiselect" />
-                                </div>
-                                <div class="filter-group">
-                                    <label class="filter-label">Tags</label>
-                                    <Chips 
-                                        v-model="selectedTags" 
-                                        placeholder="Add tags to filter" 
-                                        class="tag-chips" />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Active Filters Summary -->
-                    <div class="active-filters" v-if="activeFiltersCount > 0">
-                        <div class="active-filters-header">
-                            <span class="active-count">{{ activeFiltersCount }} filter{{ activeFiltersCount > 1 ? 's' : '' }} active</span>
-                            <Button 
-                                icon="pi pi-times" 
-                                label="Clear All" 
-                                class="p-button-text p-button-sm"
-                                @click="clearAllFilters" />
-                        </div>
-                        <div class="active-filter-tags">
-                            <Tag 
-                                v-for="filter in activeFiltersList" 
-                                :key="filter.id"
-                                :value="filter.label"
-                                removable
-                                @remove="removeFilter(filter)"
-                                class="active-filter-tag" />
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Cases Table -->
-                <div class="table-container">
-                    <DataTable :value="filteredCases"
-                               :paginator="true"
-                               :rows="10"
-                               :loading="loading"
-                               v-model:selection="selectedCases"
-                               selectionMode="multiple"
-                               dataKey="id"
-                               responsiveLayout="scroll"
-                               :sortField="'createdAt'"
-                               :sortOrder="-1"
-                               class="p-datatable-sm case-table"
-                               stripedRows
-                               showGridlines>
-                        
-                        <Column selectionMode="multiple" headerStyle="width: 3rem" :exportable="false"></Column>
-                        
-                        <Column field="id" header="Case ID" :sortable="true" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <div class="flex align-items-center">
-                                    <span class="font-bold text-primary cursor-pointer" 
-                                          @click="viewCase(slotProps.data)">
-                                        {{ slotProps.data.id }}
-                                    </span>
-                                </div>
-                            </template>
-                        </Column>
+                <div class="table-container overflow-x-auto">
+                    <table class="w-full border border-gray-200 dark:border-gray-700 rounded-xl">
+                        <thead class="bg-gray-50 dark:bg-gray-800/50">
+                        <tr class="border-b-2 border-gray-200 dark:border-gray-700">
+                            <!-- CASE ID -->
+                            <th @click="sortBy('id')"
+                                class="select-none cursor-pointer text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-4 pl-3">
+                            Case ID
+                            <SortIcon :active="sort.key==='id'" :dir="sort.dir" />
+                            </th>
 
-                        <Column field="wallet" header="Wallet Address" :sortable="true" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <div class="wallet-cell">
-                                    <div class="font-mono text-sm">
-                                        {{ formatWalletAddress(slotProps.data.wallet) }}
-                                    </div>
-                                    <Button 
-                                        icon="pi pi-copy" 
-                                        class="p-button-text p-button-sm"
-                                        @click="copyToClipboard(slotProps.data.wallet)"
-                                        v-tooltip.top="'Copy wallet address'" />
-                                </div>
-                            </template>
-                        </Column>
+                            <!-- WALLET / ENTITY -->
+                            <th @click="sortBy('wallet')"
+                                class="select-none cursor-pointer text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-4">
+                            Wallet/Entity
+                            <SortIcon :active="sort.key==='wallet'" :dir="sort.dir" />
+                            </th>
 
-                        <Column field="crypto" header="Crypto" :sortable="true" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <Tag :value="slotProps.data.crypto"
-                                     :severity="getCryptoSeverity(slotProps.data.crypto)"
-                                     class="font-medium" />
-                            </template>
-                        </Column>
+                            <!-- CRYPTO -->
+                            <th @click="sortBy('crypto')"
+                                class="select-none cursor-pointer text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-4">
+                            Crypto
+                            <SortIcon :active="sort.key==='crypto'" :dir="sort.dir" />
+                            </th>
 
-                        <Column field="amount" header="Amount" :sortable="true" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <div class="amount-cell">
-                                    <div class="font-bold text-900">{{ slotProps.data.amount }}</div>
-                                </div>
-                            </template>
-                        </Column>
+                            <!-- AMOUNT -->
+                            <th @click="sortBy('amount')"
+                                class="select-none cursor-pointer text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-4">
+                            Amount
+                            <SortIcon :active="sort.key==='amount'" :dir="sort.dir" />
+                            </th>
 
-                        <Column field="level" header="Level" :sortable="true" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <Tag :value="slotProps.data.level"
-                                     :severity="getLevelSeverity(slotProps.data.level)"
-                                     class="font-medium" />
-                            </template>
-                        </Column>
+                            <!-- PRIORITY -->
+                            <th @click="sortBy('priority')"
+                                class="select-none cursor-pointer text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-4">
+                            Priority
+                            <SortIcon :active="sort.key==='priority'" :dir="sort.dir" />
+                            </th>
 
-                        <Column field="status" header="Status" :sortable="true" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <Tag :value="getStatusLabel(slotProps.data.status)"
-                                     :severity="getStatusSeverity(slotProps.data.status)"
-                                     class="font-medium" />
-                            </template>
-                        </Column>
+                            <!-- STATUS -->
+                            <th @click="sortBy('status')"
+                                class="select-none cursor-pointer text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-4">
+                            Status
+                            <SortIcon :active="sort.key==='status'" :dir="sort.dir" />
+                            </th>
 
-                        <Column field="priority" header="Priority" :sortable="true" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <Tag :value="slotProps.data.priority"
-                                     :severity="getPrioritySeverity(slotProps.data.priority)"
-                                     class="font-medium" />
-                            </template>
-                        </Column>
+                            <!-- DATE -->
+                            <th @click="sortBy('created_at')"
+                                class="select-none cursor-pointer text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-4">
+                            Date
+                            <SortIcon :active="sort.key==='created_at'" :dir="sort.dir" />
+                            </th>
 
-                        <Column field="assignedTo" header="Assigned To" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <div class="flex align-items-center">
-                                    <Avatar :label="getInitials(slotProps.data.assignedTo)"
-                                            size="small"
-                                            shape="circle"
-                                            class="mr-2"
-                                            :style="{ backgroundColor: getAvatarColor(slotProps.data.assignedTo) }" />
-                                    <span class="text-900">{{ slotProps.data.assignedTo || 'Unassigned' }}</span>
-                                </div>
-                            </template>
-                        </Column>
+                            <th class="text-left text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider py-4 pr-3">
+                            Actions
+                            </th>
+                        </tr>
+                        </thead>
 
-                        <Column field="createdAt" header="Created" :sortable="true" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <div class="date-cell">
-                                    <div class="font-medium text-900">{{ formatDate(slotProps.data.createdAt) }}</div>
-                                    <small class="text-600">{{ formatTime(slotProps.data.createdAt) }}</small>
-                                </div>
-                            </template>
-                        </Column>
+                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        <tr v-for="row in sortedRows" :key="row.id" class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <!-- Case ID -->
+                            <td class="py-4 pl-3">
+                            <span class="text-sm font-bold text-blue-600 dark:text-blue-400 cursor-pointer hover:underline"
+                                    @click="viewCase(row)">{{ row.id }}</span>
+                            </td>
 
-                        <Column header="Actions" :exportable="false" headerClass="font-bold">
-                            <template #body="slotProps">
-                                <div class="flex gap-1">
-                                    <Button icon="pi pi-eye"
-                                            class="p-button-rounded p-button-text p-button-sm action-btn"
-                                            @click="viewCase(slotProps.data)"
-                                            v-tooltip.top="'View Details'" />
-                                    <Button icon="pi pi-send"
-                                            class="p-button-rounded p-button-text p-button-sm p-button-warning action-btn"
-                                            @click="escalateCase(slotProps.data)"
-                                            v-tooltip.top="'Escalate to L2'"
-                                            :disabled="!canEscalate(slotProps.data)"
-                                            v-if="authStore.isL1Analyst || authStore.isAdmin" />
-                                    <Button icon="pi pi-check"
-                                            class="p-button-rounded p-button-text p-button-sm p-button-success action-btn"
-                                            @click="approveCase(slotProps.data)"
-                                            v-tooltip.top="'Approve'"
-                                            :disabled="!canApprove(slotProps.data)"
-                                            v-if="authStore.hasPermission('approve')" />
-                                </div>
-                            </template>
-                        </Column>
-                    </DataTable>
-                </div>
+                            <!-- Wallet / Entity -->
+                            <td class="py-4">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-medium text-gray-900 dark:text-white font-mono">
+                                {{ row.wallet ? formatWalletAddress(row.wallet) : (row.customer || 'N/A') }}
+                                </span>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">
+                                {{ row.wallet ? 'Wallet' : (row.customer?.includes('Wallet') ? 'Individual' : 'Exchange') }}
+                                </span>
+                            </div>
+                            </td>
+
+                            <!-- Crypto -->
+                            <td class="py-4">
+                            <div class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold"
+                                :class="{
+                                    'bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300': row.crypto === 'BTC',
+                                    'bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300': row.crypto === 'ETH',
+                                    'bg-green-100 dark:bg-green-900/50 text-green-800 dark:text-green-300': row.crypto === 'USDT' || row.crypto === 'USDC',
+                                    'bg-gray-100 dark:bg-gray-900/50 text-gray-800 dark:text-gray-300': !['BTC','ETH','USDT','USDC'].includes(row.crypto)
+                                }">
+                                <div class="w-2 h-2 rounded-full"
+                                    :class="{
+                                    'bg-orange-500': row.crypto === 'BTC',
+                                    'bg-blue-500': row.crypto === 'ETH',
+                                    'bg-green-500': row.crypto === 'USDT' || row.crypto === 'USDC',
+                                    'bg-gray-500': !['BTC','ETH','USDT','USDC'].includes(row.crypto)
+                                    }"></div>
+                                {{ row.crypto }}
+                            </div>
+                            </td>
+
+                            <!-- Amount -->
+                            <td class="py-4">
+                            <span class="text-sm font-semibold text-gray-900 dark:text-white">{{ row.amount || '—' }}</span>
+                            </td>
+
+                            <!-- Priority -->
+                            <td class="py-4">
+                            <span class="inline-flex px-3 py-1 text-xs font-bold rounded-full"
+                                    :class="{
+                                    'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300': (row.priority || row.riskLevel) === 'high' || (row.priority || row.riskLevel) === 'High',
+                                    'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300': (row.priority || row.riskLevel) === 'medium' || (row.priority || row.riskLevel) === 'Medium',
+                                    'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300': (row.priority || row.riskLevel) === 'low' || (row.priority || row.riskLevel) === 'Low'
+                                    }">
+                                {{ row.priority || row.riskLevel || 'Medium' }}
+                            </span>
+                            </td>
+
+                            <!-- Status -->
+                            <td class="py-4">
+                            <span class="inline-flex px-3 py-1 text-xs font-bold rounded-full"
+                                    :class="{
+                                    'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300': row.status === 'new',
+                                    'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300': ['in_review','Under Review','Pending','pending_docs'].includes(row.status),
+                                    'bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300': row.status === 'escalated',
+                                    'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300': row.status === 'Investigating',
+                                    'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300': ['approved','Resolved'].includes(row.status),
+                                    'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300': row.status === 'rejected'
+                                    }">
+                                {{ getStatusLabel(row.status) }}
+                            </span>
+                            </td>
+
+                            <!-- Date -->
+                            <td class="py-4">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-medium text-gray-900 dark:text-white">
+                                {{ formatDate(row.created_at || row.createdAt || row.date) }}
+                                </span>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">
+                                {{ (row.created_at || row.createdAt) ? new Date(row.created_at || row.createdAt).toLocaleTimeString() : '' }}
+                                </span>
+                            </div>
+                            </td>
+
+                            <!-- Actions -->
+                            <td class="py-4 pr-3">
+                            <button @click="viewCase(row)"
+                                    class="p-1 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-md transition-colors"
+                                    title="View Details">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                            </button>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                    </div>
             </div>
         </div>
 
@@ -1066,9 +562,7 @@
 </template>
 
 <script setup>
-import router from '@/router';
 import { useAuthStore } from '@/stores/auth';
-import { amlCaseService } from '@/services/AMLCaseService';
 import Avatar from 'primevue/avatar';
 import Button from 'primevue/button';
 import Calendar from 'primevue/calendar';
@@ -1086,7 +580,11 @@ import TabPanel from 'primevue/tabpanel';
 import TabView from 'primevue/tabview';
 import Tag from 'primevue/tag';
 import Timeline from 'primevue/timeline';
-import { computed, onMounted, ref } from 'vue';
+import { ref, onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { useToast } from 'primevue/usetoast'
+import * as api from '@/services/api'
+import { defineComponent } from 'vue'
 
 // Auth store
 const authStore = useAuthStore();
@@ -1108,6 +606,9 @@ const selectedCrypto = ref(null);
 const dateRange = ref(null);
 const newNote = ref('');
 const unreadNotifications = ref([]);
+
+const router = useRouter()
+const toast = useToast()
 
 // New reactive data for enhanced UI
 const showAdvancedFilters = ref(false);
@@ -1162,56 +663,48 @@ const levelOptions = [
 
 // Computed
 const filteredCases = computed(() => {
-    // First filter by user role
-    let filtered = [...cases.value].filter(case_ => {
-        if (authStore.isAdmin) {
-            return true; // Admin sees all cases
-        } else if (authStore.isL2Analyst) {
-            return case_.level === 'L2'; // L2 analyst only sees L2 cases
-        } else if (authStore.isL1Analyst) {
-            return case_.level === 'L1'; // L1 analyst only sees L1 cases
-        }
-        return false;
-    });
+  const uid = authStore?.user?.id
+  // Amankan: kalau belum tahu user.id, jangan tampilkan apa pun dulu
+  let filtered = uid
+    ? cases.value.filter(c => {
+        const assigned = Array.isArray(c.assignments) && c.assignments.some(a => a?.user_id === uid)
+        const owned     = c.owner_id === uid
+        return assigned || owned
+      })
+    : []
 
-    // Then apply other filters
-    if (selectedLevel.value) {
-        filtered = filtered.filter(case_ => case_.level === selectedLevel.value.value);
-    }
+  // (lanjutan) filter lain tetap seperti semula:
+  if (selectedLevel.value) {
+    filtered = filtered.filter(case_ => case_.level === selectedLevel.value.value)
+  }
+  if (selectedStatus.value) {
+    filtered = filtered.filter(case_ => case_.status === selectedStatus.value.value)
+  }
+  if (selectedPriority.value) {
+    filtered = filtered.filter(case_ => case_.priority === selectedPriority.value.value)
+  }
+  if (selectedCrypto.value) {
+    filtered = filtered.filter(case_ => case_.crypto === selectedCrypto.value.value)
+  }
+  if (searchTerm.value) {
+    const term = searchTerm.value.toLowerCase()
+    filtered = filtered.filter(case_ =>
+      String(case_.id).toLowerCase().includes(term) ||
+      case_.title?.toLowerCase().includes(term) ||
+      case_.description?.toLowerCase().includes(term) ||
+      case_.wallet?.toLowerCase().includes(term)
+    )
+  }
+  if (dateRange.value && dateRange.value[0] && dateRange.value[1]) {
+    const [startDate, endDate] = dateRange.value
+    filtered = filtered.filter(case_ => {
+      const d = new Date(case_.created_at || case_.createdAt)
+      return d >= startDate && d <= endDate
+    })
+  }
 
-    if (selectedStatus.value) {
-        filtered = filtered.filter(case_ => case_.status === selectedStatus.value.value);
-    }
-
-    if (selectedPriority.value) {
-        filtered = filtered.filter(case_ => case_.priority === selectedPriority.value.value);
-    }
-
-    if (selectedCrypto.value) {
-        filtered = filtered.filter(case_ => case_.crypto === selectedCrypto.value.value);
-    }
-
-    if (searchTerm.value) {
-        const term = searchTerm.value.toLowerCase();
-        filtered = filtered.filter(case_ => 
-            case_.id.toLowerCase().includes(term) ||
-            case_.title?.toLowerCase().includes(term) ||
-            case_.description?.toLowerCase().includes(term) ||
-            case_.wallet?.toLowerCase().includes(term)
-        );
-    }
-
-    if (dateRange.value && dateRange.value[0] && dateRange.value[1]) {
-        const startDate = dateRange.value[0];
-        const endDate = dateRange.value[1];
-        filtered = filtered.filter(case_ => {
-            const caseDate = new Date(case_.createdAt);
-            return caseDate >= startDate && caseDate <= endDate;
-        });
-    }
-
-    return filtered;
-});
+  return filtered
+})
 
 // Methods
 const fetchAnomalies = async () => {
@@ -1674,22 +1167,104 @@ const cryptoOptions = computed(() => {
     }));
 });
 
+// ----- Sorting state & helpers (JS only) -----
+const sort = ref({ key: 'created_at', dir: 'desc' }) // dir: 'asc' | 'desc'
+
+function sortBy(key) {
+  if (sort.value.key === key) {
+    sort.value.dir = sort.value.dir === 'asc' ? 'desc' : 'asc'
+  } else {
+    sort.value.key = key
+    sort.value.dir = 'asc'
+  }
+}
+
+function valFor(row, key) {
+  if (key === 'amount') {
+    const n = parseFloat(String(row.amount ?? '').replace(/[^\d.]/g, ''))
+    return Number.isFinite(n) ? n : -Infinity
+  }
+  if (key === 'created_at') {
+    const t = new Date(row.created_at || row.createdAt || row.date || 0).getTime()
+    return Number.isFinite(t) ? t : 0
+  }
+  const v = row?.[key]
+  return typeof v === 'string' ? v.toLowerCase() : (v ?? '')
+}
+
+const sortedRows = computed(() => {
+  const arr = Array.isArray(filteredCases.value) ? [...filteredCases.value] : []
+  const { key, dir } = sort.value
+  arr.sort((a, b) => {
+    const av = valFor(a, key)
+    const bv = valFor(b, key)
+    if (av < bv) return dir === 'asc' ? -1 : 1
+    if (av > bv) return dir === 'asc' ? 1 : -1
+    return 0
+  })
+  return arr
+})
+
+// Ikon indikator sort untuk header
+const SortIcon = {
+  name: 'SortIcon',
+  props: { active: Boolean, dir: { type: String, default: 'asc' } },
+  template: `
+    <span class="inline-block align-middle ml-1">
+      <svg v-if="active && dir==='asc'" xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 inline" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M14.707 10.293a1 1 0 01-1.414 0L10 6.999 6.707 10.293A1 1 0 015.293 8.88l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd"/>
+      </svg>
+      <svg v-else-if="active && dir==='desc'" xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 inline" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M5.293 9.707a1 1 0 011.414 0L10 12.999l3.293-3.292a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+      </svg>
+      <svg v-else xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 inline opacity-30" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M7 7l3-3 3 3H7zM13 13l-3 3-3-3h6z"/>
+      </svg>
+    </span>
+  `
+}
+
+function mapRow(c) {
+  const p = c?.payload || {}
+  const ref = c?.reference_id || p?.wallet || p?.address || ''
+  const crypto = p?.chain || p?.network || (String(ref||'').startsWith('0x') ? 'ETH' : 'BTC')
+  const amount = (p?.amount != null) ? `${p.amount} ${crypto}` : null
+  return {
+    id: c.id,
+    wallet: p?.wallet || ref,
+    crypto,
+    amount,
+    level: p?.level || c.level || 'L1',
+    status: c.status,
+    priority: c.priority || p?.priority || null,
+    assigned_to: c.owner_id ? `Owner #${c.owner_id}` : (c.assignee || 'Unassigned'),
+    created_at: c.created_at,
+    owner_id: c.owner_id ?? null,
+    assignments: Array.isArray(c.assignments) ? c.assignments : [], // <— penting
+    raw: c
+  }
+}
+
+async function fetchAllCases() {
+  loading.value = true
+  try {
+    // backend-mu sudah punya GET /cases yang mengembalikan list
+    const res = await api.request('/cases', { method: 'GET' })
+    const list = Array.isArray(res) ? res : (res?.items || [])
+    cases.value = list.map(mapRow)
+  } catch (e) {
+    toast.add({ severity: 'warn', summary: 'Cases', detail: e?.message || 'Load failed', life: 2500 })
+  } finally {
+    loading.value = false
+  }
+}
+
+function openDetail(row) {
+  router.push(`/monitoring/cases/${row.id}`)
+}
+
 // Lifecycle
-onMounted(() => {
-    fetchAnomalies();
-    
-    // Set up auto-refresh every 30 seconds
-    const refreshInterval = setInterval(() => {
-        if (!loading.value) {
-            fetchAnomalies();
-        }
-    }, 30000);
-    
-    // Cleanup on unmount
-    return () => {
-        clearInterval(refreshInterval);
-    };
-});
+onMounted(fetchAllCases)
 </script>
 
 <style scoped>

@@ -30,6 +30,12 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToast()
 
+const assignDialog = ref(false)
+const assignQuery = ref('')
+const assignLoading = ref(false)
+const assignCandidates = ref([])
+const selectedAssignee = ref(null)
+
 // Reactive data
 const caseData = ref(null);
 const loading = ref(false);
@@ -145,6 +151,43 @@ function getCaretToken(text, caretPos) {
 
 const lastCaretPos = ref(0)
 
+async function loadCandidates() {
+  assignLoading.value = true
+  try {
+    const r = await searchUsers(assignQuery.value || '')
+    // kalau mau menonjolkan exchanger: bisa diurutkan
+    assignCandidates.value = (r || []).sort((a, b) => {
+      const ax = (a.username || '').toLowerCase().includes('exchanger') ? -1 : 0
+      const bx = (b.username || '').toLowerCase().includes('exchanger') ? -1 : 0
+      return ax - bx || (a.username || '').localeCompare(b.username || '')
+    })
+  } finally {
+    assignLoading.value = false
+  }
+}
+
+async function doAssign() {
+  if (!selectedAssignee.value?.id) return
+  try {
+    await api.request(`/cases/${route.params.id}/assign`, {
+      method: 'POST',
+      body: { user_id: selectedAssignee.value.id }
+    })
+    assignDialog.value = false
+
+    // refresh detail — pakai nama fungsi yang benar
+    try { 
+      await loadCaseData()
+    } catch (e) {
+      console.debug('Refresh skipped:', e)
+    }
+
+    toast.add({ severity: 'success', summary: 'Assigned', detail: `Case di-assign ke ${selectedAssignee.value.username || 'user'}`, life: 2000 })
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Assign failed', detail: e?.message || 'Gagal assign', life: 2500 })
+  }
+}
+
 async function onCommentInput(e) {
   const el = e.target; // native textarea dari event input sudah benar
   const caret = el.selectionStart;
@@ -256,16 +299,11 @@ function shortRef(s) {
 
 function mapCaseToView(c) {
   const payload = c?.payload || {};
-  const chain = payload.chain || (c?.reference_id?.startsWith?.('0x') ? 'ETH' : 'BTC');
-  const amount = payload.amount != null ? `${payload.amount} ${chain}` : '—';
-  const level = payload.level || 'L1';
 
-  const riskStr = (c?.severity || '').toString().toLowerCase();
-  const riskLevel = riskStr ? riskStr.charAt(0).toUpperCase() + riskStr.slice(1) : '—';
-
-  const tags = Array.isArray(c?.tags) ? c.tags : [];
-  const extraTags = Array.isArray(payload.tags) ? payload.tags : [];
-  const mergedTags = [...tags, ...extraTags];
+  // === NEW: derive owner & assignees by username
+  const ownerName = c?.owner?.username || c?.owner_username || (c?.owner_id ? `user#${c.owner_id}` : 'Unassigned');
+  const assignees = Array.isArray(c?.assignments) ? c.assignments.map(a => a?.username || `user#${a?.id}`) : [];
+  const assignedToDisplay = assignees.length ? assignees.join(', ') : ownerName;
 
   return {
     id: `CASE-${c.id}`,
@@ -273,16 +311,18 @@ function mapCaseToView(c) {
     title: c?.title || null,
     crypto: (c.payload?.chain) || (String(c.reference_id||'').startsWith('0x') ? 'ETH' : 'BTC'),
     amount: (c.payload?.amount != null) ? `${c.payload.amount} ${ (c.payload?.chain)||'' }` : '—',
-    level,
+    level: c?.payload?.level || 'L1',
     status: c.status,
     riskLevel: c.severity,
     customer: payload.wallet || `${(c?.case_type || 'Wallet')}: ${shortRef(c?.reference_id)}`,
     date: c?.created_at || new Date().toISOString(),
     createdAt: c.created_at,
     updatedAt: c?.updated_at,
+
+    // === UPDATED: gunakan username
     details: {
       description: c.description || c.reason || 'Unknown description',
-      assignedTo: c.owner_id ? `Owner #${c.owner_id}` : 'Unassigned',
+      assignedTo: assignedToDisplay,
       priority: c.priority,
       typology: c.typology,
       tlp: c.tlp,
@@ -292,9 +332,13 @@ function mapCaseToView(c) {
       caseType: c.case_type,
       slaDue: c.sla_due_at,
     },
+
+    // simpan list agar bisa ditampilkan sebagai chips
+    assignees, // <-- ['aph', 'exchanger1', ...]
     activities: Array.isArray(payload.activities) ? payload.activities : []
   };
 }
+
 const loadCaseData = async () => {
   const id = route.params.id;
   loading.value = true;
@@ -752,33 +796,14 @@ watch(() => route.params.id, () => loadCaseData());
                 <!-- Action Bar -->
                 <div class="action-bar">
                     <div class="action-group primary-actions">
-                        <Button 
-                            icon="pi pi-send"
-                            label="Escalate"
-                            severity="warning"
+                        <Button
+                            v-if="authStore.isL1Analyst || authStore.isL2Analyst || authStore.isExchanger || authStore.isAdmin"
+                            label="Assign / Escalate"
+                            icon="pi pi-user-plus"
                             size="small"
                             class="action-btn"
-                            @click="escalateCase"
-                            :disabled="!canEscalate"
-                            v-if="authStore.isL1Analyst || authStore.isAdmin" />
-                        <Button 
-                            icon="pi pi-check"
-                            label="Approve"
-                            severity="success"
-                            size="small"
-                            class="action-btn"
-                            @click="approveCase"
-                            :disabled="!canApprove"
-                            v-if="authStore.hasPermission('approve')" />
-                        <Button 
-                            icon="pi pi-times"
-                            label="Reject"
-                            severity="danger"
-                            size="small"
-                            class="action-btn"
-                            @click="rejectCase"
-                            :disabled="!canReject"
-                            v-if="authStore.hasPermission('approve')" />
+                            @click="assignDialog = true; loadCandidates()"
+                        />
                     </div>
                     <div class="action-group secondary-actions">
                         <Button 
@@ -1144,18 +1169,32 @@ watch(() => route.params.id, () => loadCaseData());
                     </div>
                     <div class="card-body">
                         <div class="assignment-item">
-                            <label>Assigned To</label>
-                            <div class="assignee-info">
-                                <Avatar 
-                                    :label="getInitials(caseData?.details?.assignedTo)"
-                                    size="small"
-                                    shape="circle" />
-                                <span>{{ caseData?.details?.assignedTo }}</span>
-                            </div>
+                        <label>Assigned To</label>
+
+                        <!-- Tampilkan daftar assignee sebagai chips bila ada -->
+                        <div v-if="Array.isArray(caseData?.assignees) && caseData.assignees.length" class="flex flex-wrap gap-2">
+                            <Tag
+                            v-for="u in caseData.assignees"
+                            :key="u"
+                            :value="u"
+                            severity="info"
+                            rounded
+                            />
                         </div>
+
+                        <!-- Fallback: single display string -->
+                        <div v-else class="assignee-info">
+                            <Avatar 
+                            :label="getInitials(caseData?.details?.assignedTo)"
+                            size="small"
+                            shape="circle" />
+                            <span class="ml-2">{{ caseData?.details?.assignedTo }}</span>
+                        </div>
+                        </div>
+
                         <div class="assignment-item">
-                            <label>Review Level</label>
-                            <div class="review-level">{{ caseData?.level }} Review</div>
+                        <label>Review Level</label>
+                        <div class="review-level">{{ caseData?.level }} Review</div>
                         </div>
                     </div>
                 </div>
@@ -1182,7 +1221,26 @@ watch(() => route.params.id, () => loadCaseData());
                 </div>
             </div>
         </div>
-
+        <!-- === Assign / Escalate Dialog === -->
+        <Dialog v-model:visible="assignDialog" header="Assign / Escalate Case" modal
+                :style="{ width: '90vw', maxWidth: '520px' }">
+        <div class="p-fluid">
+            <div class="field">
+            <Dropdown
+                :options="assignCandidates"
+                v-model="selectedAssignee"
+                optionLabel="username"
+                placeholder="Pilih user"
+                :loading="assignLoading"
+                class="w-full"
+            />
+            </div>
+            <div class="flex justify-end gap-2 mt-3">
+            <Button label="Batal" text @click="assignDialog=false" />
+            <Button label="Assign" @click="doAssign" :disabled="!selectedAssignee" />
+            </div>
+        </div>
+        </Dialog>
         <!-- Add Note Dialog -->
         <Dialog 
             v-model:visible="showAddNoteDialog" 
@@ -2683,36 +2741,36 @@ watch(() => route.params.id, () => loadCaseData());
 }
 
 .mention-highlighter {
-  /* match tampilan textarea */
-  font: inherit;
-  line-height: inherit;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-
-  /* ukuran & padding harus sama dengan textarea PrimeVue */
-  padding: var(--p-inputtext-padding, 0.75rem 1rem);
-  border-radius: var(--p-inputtext-border-radius, 8px);
-
-  /* warna dasar mengikuti surface */
-  color: transparent; 
-  background: transparent;
   position: absolute;
   inset: 0;
   overflow: auto;
   pointer-events: none;
+
+  /* samakan dengan textarea */
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  padding: var(--p-inputtext-padding, 0.75rem 1rem);
+  border-radius: var(--p-inputtext-border-radius, 8px);
+
+  /* teks highlighter terlihat (bukan transparan) */
+  color: var(--text-color, inherit);
+  background: transparent;
 }
 
-/* Textarea di atas highlighter */
-.mention-textarea :deep(textarea),
-.mention-textarea {
-  background-color: transparent !important;
-  position: relative;
-}
-
-/* Warna mention */
 mark.mention {
   background: transparent;
-  color: var(--p-primary-color, #2563eb);   /* biru */
+  color: var(--p-primary-color, #2563eb);
   font-weight: 600;
+}
+
+/* Textarea: sembunyikan teksnya supaya tak dobel, tapi caret tetap terlihat */
+.mention-textarea :deep(textarea),
+.mention-textarea {
+  position: relative;
+  background: transparent !important;
+  color: transparent !important;     /* <- sembunyikan teks */
+  caret-color: var(--text-color);    /* <- caret tetap terlihat */
 }
 </style>

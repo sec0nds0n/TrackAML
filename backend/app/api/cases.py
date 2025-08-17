@@ -233,13 +233,31 @@ class CaseList(Resource):
                 reason=data.get('reason'),
                 source=data.get('source'),
                 description=data.get('description'),
-                tags=data.get('tags') or [],
+                tags=data.get('tags'),
                 tlp=norm['tlp'],
                 visibility=norm['visibility'],
                 sla_due_at=data.get('sla_due_at'),
                 owner_id=owner_id,
                 payload=data.get('payload') or {},
             )
+            creator_role = (getattr(g, 'role', '') or '').lower()
+            if creator_role == 'analyst_l1':
+                with get_db_connection() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # pilih L2 dengan open case paling sedikit
+                    cur.execute("""
+                        SELECT u.id
+                        FROM users u
+                        LEFT JOIN case_assignments ca ON ca.user_id = u.id
+                        LEFT JOIN cases c ON c.id = ca.case_id
+                                            AND lower(c.status::text) NOT IN ('resolved','dropped')
+                        WHERE lower(u.role) = 'analyst_l2'
+                        GROUP BY u.id
+                        ORDER BY COUNT(CASE WHEN c.id IS NOT NULL THEN 1 END) ASC, u.id ASC
+                        LIMIT 1
+                    """)
+                    row = cur.fetchone()
+                    if row and row.get('id'):
+                        assign_case(case_id, row['id'], replace=False)
             return {'message': 'Case created successfully', 'case_id': case_id}, 201
         except ValueError as e:
             return {'message': str(e)}, 400
@@ -267,65 +285,38 @@ class CaseAssign(Resource):
 
 @api.route('/<int:case_id>')
 class CaseDetail(Resource):
-    """GET & PATCH gabung dalam satu resource"""
-
-    # @login_required
     @jwt_required
     def get(self, case_id: int):
         with get_db_connection() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # case + owner username
             cur.execute("""
-                SELECT
-                    id,
-                    case_type::text   AS case_type,
-                    reference_id,
-                    payload,
-                    status::text      AS status,
-                    created_at,
-                    updated_at,
-                    reason,
-                    source,
-                    description,
-                    severity::text    AS severity,
-                    COALESCE(tags, ARRAY[]::text[]) AS tags,
-                    title,
-                    priority::text     AS priority,
-                    typology,
-                    tlp::text          AS tlp,
-                    visibility::text   AS visibility,
-                    sla_due_at,
-                    owner_id
-                FROM cases
-                WHERE id = %s
+                SELECT c.*,
+                       u.username AS owner_username
+                  FROM cases c
+             LEFT JOIN users u ON u.id = c.owner_id
+                 WHERE c.id = %s
             """, (case_id,))
             row = cur.fetchone()
             if not row:
                 abort(404, description='Case not found')
-            return row_to_case(row), 200
 
-    @api.expect(case_update_model)
-    # @login_required
-    @jwt_required
-    def patch(self, case_id):
-        """Update case (hanya admin atau user yang di-assign)"""
-        case = get_case_with_assignments(case_id)
-        if not case:
-            return {'message': 'Case not found'}, 404
+            # assignments (id, username, role)
+            cur.execute("""
+                SELECT u.id, u.username, u.role
+                  FROM case_assignments ca
+                  JOIN users u ON u.id = ca.user_id
+                 WHERE ca.case_id = %s
+              ORDER BY LOWER(u.username)
+            """, (case_id,))
+            assigns = cur.fetchall() or []
 
-        role = getattr(g, 'role', None)
-        user_id = getattr(g, 'user_id', None)
-        assigned_user_ids = [a.get('user_id') for a in case.get('assignments', [])]
-
-        if not (role == 'admin' or (user_id and user_id in assigned_user_ids)):
-            return {'message': 'You are not allowed to edit this case'}, 403
-
-        try:
-            update_case(case_id, request.get_json() or {})
-            return {'message': 'Case updated successfully'}, 200
-        except ValueError as e:
-            return {'message': str(e)}, 400
-        except Exception as e:
-            return {'message': 'Internal server error', 'detail': str(e)}, 500
-
+        base = row_to_case(row)  # keep your existing normalization
+        base['owner'] = {
+            'id': row.get('owner_id'),
+            'username': row.get('owner_username')
+        }
+        base['assignments'] = assigns
+        return base, 200
 
 @api.route('/active-count')
 class ActiveCaseCount(Resource):
@@ -416,7 +407,7 @@ class AssignEntityToCase(Resource):
                 conn.commit()
             except (pg_errors.InvalidTextRepresentation, pg_errors.UndefinedObject) as e:
                 conn.rollback()
-                return {'message': 'Invalid enum value', 'detail': str(e).split('\n')[0]}, 400
+                return {'message': 'Created', 'case_id': case_id}, 201
             
 @api.route('/<int:case_id>/comments')
 class CaseComments(Resource):

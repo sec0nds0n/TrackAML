@@ -19,6 +19,7 @@ import Textarea from 'primevue/textarea';
 import { ref, onMounted, computed, reactive } from 'vue';
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 // Use the composable
 const {
@@ -52,6 +53,9 @@ const showAddAddressDialog = ref(false);
 const showInvestigationDialog = ref(false);
 const selectedTransaction = ref(null);
 const investigationNotes = ref('');
+
+const authStore = useAuthStore()
+const isL1 = computed(() => authStore?.isL1Analyst === true || authStore?.user?.role === 'analyst_l1')
 
 // --- NEW: state untuk 2 tabel ---
 const loadingBlacklist = ref(false)
@@ -349,28 +353,30 @@ function resetCaseForm () {
 
 // === BUKA MODAL dari baris WALLET ===
 function openCreateCaseFromWallet(row) {
-  resetCaseForm()
-  caseForm.type = 'wallet'
-  caseForm.reference_id = row?.address || ''
-  caseForm.payload.source = row?.source ?? null
-  caseForm.payload.category = row?.category ?? null
-  caseForm.payload.added_on = row?.added_on ?? null
-  caseForm.title = `Wallet ${String(row?.address || '').slice(0,6)}…`
-  caseForm.reason = row?.reason || row?.category || 'Flagged suspicious wallet'
-  showCreateCaseModal.value = true
+    if (!isL1.value) return
+    resetCaseForm()
+    caseForm.type = 'wallet'
+    caseForm.reference_id = row?.address || ''
+    caseForm.payload.source = row?.source ?? null
+    caseForm.payload.category = row?.category ?? null
+    caseForm.payload.added_on = row?.added_on ?? null
+    caseForm.title = `Wallet ${String(row?.address || '').slice(0,6)}…`
+    caseForm.reason = row?.reason || row?.category || 'Flagged suspicious wallet'
+    showCreateCaseModal.value = true
 }
 
 // === BUKA MODAL dari baris TRANSAKSI ===
 function openCreateCaseFromTx(row) {
-  resetCaseForm()
-  caseForm.type = 'transaction'
-  caseForm.reference_id = row?.tx_hash || row?.hash || row?.txHash || ''
-  caseForm.payload.source = row?.detector ?? 'anomaly'
-  caseForm.payload.category = row?.category ?? null
-  caseForm.payload.added_on = row?.timestamp ?? null
-  caseForm.title = `Tx ${String(caseForm.reference_id).slice(0,10)}…`
-  caseForm.reason = row?.reason || row?.detector || 'Anomalous transaction'
-  showCreateCaseModal.value = true
+    if (!isL1.value) return
+    resetCaseForm()
+    caseForm.type = 'transaction'
+    caseForm.reference_id = row?.tx_hash || row?.hash || row?.txHash || ''
+    caseForm.payload.source = row?.detector ?? 'anomaly'
+    caseForm.payload.category = row?.category ?? null
+    caseForm.payload.added_on = row?.timestamp ?? null
+    caseForm.title = `Tx ${String(caseForm.reference_id).slice(0,10)}…`
+    caseForm.reason = row?.reason || row?.detector || 'Anomalous transaction'
+    showCreateCaseModal.value = true
 }
 
 // validasi sederhana
@@ -616,6 +622,7 @@ onMounted(() => {
                                 @click="viewAddressDetails(data)"
                             />
                             <Button
+                                v-if="isL1"
                                 icon="pi pi-briefcase"
                                 class="p-button-rounded p-button-text p-button-warning"
                                 v-tooltip.top="'Create Case'"
@@ -697,10 +704,13 @@ onMounted(() => {
                                 amount: data.value, timestamp: data.timestamp,
                                 riskLevel: 'HIGH', suspiciousFlags: [data.reason]
                                 })" />
-                        <Button icon="pi pi-briefcase"
-                                class="p-button-rounded p-button-text p-button-warning"
-                                v-tooltip.top="'Create Case'"
-                                @click="openCreateCaseFromTx(data)" />
+                        <Button
+                            v-if="isL1"
+                            icon="pi pi-briefcase"
+                            class="p-button-rounded p-button-text p-button-warning"
+                            v-tooltip.top="'Create Case'"
+                            @click="openCreateCaseFromTx(data)"
+                        />
                         </div>
                     </template>
                 </Column>
@@ -901,9 +911,10 @@ onMounted(() => {
             <div class="flex flex-column sm:flex-row justify-content-end gap-2">
             <Button label="Close" icon="pi pi-times" class="p-button-text" @click="showInvestigationDialog = false" />
             <Button label="Create Case"
+                v-if="isL1"
                 icon="pi pi-briefcase"
                 severity="success"
-                @click="createCaseFromTx(selectedTransaction)" />
+                @click="openCreateCaseFromTx(selectedTransaction)" />
             </div>
         </template>
     </Dialog>
