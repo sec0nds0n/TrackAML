@@ -4,7 +4,6 @@ import { useCaseStore } from '@/stores/cases';
 import { amlCaseService } from '@/services/AMLCaseService';
 import Avatar from 'primevue/avatar';
 import Button from 'primevue/button';
-import Chip from 'primevue/chip';
 import Column from 'primevue/column';
 import DataTable from 'primevue/datatable';
 import Dialog from 'primevue/dialog';
@@ -118,6 +117,21 @@ const chain    = computed(() => caseData.value?.payload?.chain || caseData.value
 const riskScore = computed(() => caseData.value?.payload?.risk_score ?? null)
 const risks = computed(() => caseData.value?.payload?.risks || caseData.value?.risks || [])
 
+function getCaseId() {
+  // 1) ambil dari route (dukung :id atau :caseId)
+  const rid = route.params.id ?? route.params.caseId ?? route.query?.id
+  if (rid != null && String(rid).trim() !== '' && !isNaN(Number(rid))) {
+    return Number(rid)
+  }
+  // 2) fallback dari data yang sudah dimuat
+  if (caseData.value?._rawId != null && !isNaN(Number(caseData.value._rawId))) {
+    return Number(caseData.value._rawId)
+  }
+  // 3) fallback terakhir: kalau id masih angka
+  if (typeof caseData.value?.id === 'number') return caseData.value.id
+  return null
+}
+
 function extractMentions(text='') {
   const out = []
   let m
@@ -167,22 +181,25 @@ async function loadCandidates() {
 }
 
 async function doAssign() {
+  const cid = getCaseId()
+  if (!cid) {
+    toast.add({ severity: 'error', summary: 'Assign', detail: 'Case ID tidak ditemukan', life: 2000 })
+    return
+  }
   if (!selectedAssignee.value?.id) return
   try {
-    await api.request(`/cases/${route.params.id}/assign`, {
+    await api.request(`/cases/${cid}/assign`, {
       method: 'POST',
       body: { user_id: selectedAssignee.value.id }
     })
     assignDialog.value = false
-
-    // refresh detail — pakai nama fungsi yang benar
-    try { 
-      await loadCaseData()
-    } catch (e) {
-      console.debug('Refresh skipped:', e)
-    }
-
-    toast.add({ severity: 'success', summary: 'Assigned', detail: `Case di-assign ke ${selectedAssignee.value.username || 'user'}`, life: 2000 })
+    try { await loadCaseData() } catch {}
+    toast.add({
+      severity: 'success',
+      summary: 'Assigned',
+      detail: `Case di-assign ke ${selectedAssignee.value.username || 'user'}`,
+      life: 2000
+    })
   } catch (e) {
     toast.add({ severity: 'error', summary: 'Assign failed', detail: e?.message || 'Gagal assign', life: 2500 })
   }
@@ -340,26 +357,22 @@ function mapCaseToView(c) {
 }
 
 const loadCaseData = async () => {
-  const id = route.params.id;
-  loading.value = true;
-  loadError.value = '';
+  const id = getCaseId()
+  if (!id) { loadError.value = 'Case ID tidak ditemukan'; return }
+  loading.value = true
+  loadError.value = ''
   try {
-    // 1) coba API langsung
-    const raw = await amlCaseService.getCaseById(id);     // GET /api/cases/:id
-    caseData.value = mapCaseToView(raw);
+    const raw = await amlCaseService.getCaseById(id) // GET /api/cases/:id
+    caseData.value = mapCaseToView(raw)
   } catch (e) {
-    console.warn('Case detail API fallback to store:', e);
-    // 2) fallback ke store lama (kalau masih ada)
-    const fromStore = caseStore.getCaseById?.(id);
-    if (fromStore) {
-      caseData.value = fromStore;
-    } else {
-      loadError.value = 'Case not found';
-    }
+    console.warn('Case detail API fallback to store:', e)
+    const fromStore = caseStore.getCaseById?.(id)
+    if (fromStore) caseData.value = fromStore
+    else loadError.value = 'Case not found'
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 const goBack = () => {
   if (window.history.length > 1) router.back();
@@ -630,15 +643,15 @@ const getActivityColor = (action) => {
 };
 
 async function loadComments() {
+  const cid = getCaseId()
+  if (!cid) return
   commentsLoading.value = true
   try {
-    const list = await api.getCaseComments(route.params.id)
+    const list = await api.getCaseComments(cid)
     comments.value = (list || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   } catch (e) {
-    if (e?.status === 404) {
-      // endpoint belum ada → tampilkan empty state, tapi jangan spam toast
-      comments.value = []
-    } else if (e?.status === 401 || e?.isAuthError) {
+    if (e?.status === 404) comments.value = []
+    else if (e?.status === 401 || e?.isAuthError) {
       toast.add({ severity: 'warn', summary: 'Auth', detail: 'Sesi berakhir. Silakan login lagi.', life: 2500 })
     } else if (e?.status === 403) {
       toast.add({ severity: 'warn', summary: 'Akses ditolak', detail: 'Anda tidak punya akses ke komentar case ini.', life: 2500 })
@@ -651,6 +664,11 @@ async function loadComments() {
 }
 
 async function postComment() {
+  const cid = getCaseId()
+  if (!cid) {
+    toast.add({ severity: 'warn', summary: 'Comment', detail: 'Case ID tidak ditemukan', life: 2000 })
+    return
+  }
   const body = commentBody.value.trim()
   if (!body) return
   posting.value = true
@@ -662,22 +680,20 @@ async function postComment() {
   }
   comments.value = [optimistic, ...comments.value]
   try {
-    const created = await api.addCaseComment(route.params.id, { body, visibility: commentVis.value })
+    const created = await api.addCaseComment(cid, { body, visibility: commentVis.value })
     commentBody.value = ''
     await loadComments()
 
-    // === NEW: notifikasi mention ===
+    // kirim notifikasi mention (optional)
     const usernames = extractMentions(optimistic.body)
     if (usernames.length) {
-      // jika API backend belum ada, buatkan endpoint sederhana; ini akan diabaikan kalau 404
       try {
         await api.notifyMentions({
-          case_id: route.params.id,
-          comment_id: created?.id, // kalau backend balikin id komentar
+          case_id: cid,
+          comment_id: created?.id,
           usernames
         })
       } catch (err) {
-        // jangan keras—anggap optional
         console.debug('notifyMentions skipped:', err?.message || err)
       }
     }
@@ -727,7 +743,10 @@ function onCommentKeydown(e) {
 onMounted(loadCaseData);
 onMounted(loadComments)
 
-watch(() => route.params.id, () => loadCaseData());
+watch(
+  () => [route.params.id, route.params.caseId, route.query?.id],
+  () => { loadCaseData(); loadComments() }
+)
 </script>
 
 <template>
