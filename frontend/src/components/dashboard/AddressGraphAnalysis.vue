@@ -2,12 +2,17 @@
 import { ref, watch, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { Network } from 'vis-network/standalone'
+import api from '@/services/api'
+import Card from 'primevue/card'
+import TabPanel from 'primevue/tabpanel'
 
 const props = defineProps({
   addressData: { type: Object, required: true },
   apiBase:     { type: String, default: 'http://127.0.0.1:5000/api' },
-  // UI Hops ditampilkan tapi TIDAK dipakai untuk query (sementara)
-  defaultHops: { type: Number, default: 2 }
+
+  defaultHops: { type: Number, default: 2 },
+  address: { type: String, required: true },
+  depth:   { type: Number, default: 2 }
 })
 
 /* ---------------- state ---------------- */
@@ -24,6 +29,108 @@ const viewModes = [
 
 const hops = ref(String(props.defaultHops)) // hanya untuk UI
 const wallet = computed(() => props.addressData?.address || '')
+
+// --- Sankey ---
+const sankeyEl = ref(null)
+let echarts = null
+let sankeyChart = null
+const sankeyLoading = ref(false)
+const sankeyData = ref({ nodes: [], links: [], summary: null })
+
+async function loadSankey() {
+  // pakai props.address kalau ada, fallback ke addressData.address
+  const target = (props.address || wallet.value || '').trim()
+  if (!target) {
+    sankeyData.value = { nodes: [], links: [], summary: null }
+    return
+  }
+
+  sankeyLoading.value = true
+  try {
+    const base = (props.apiBase || '').replace(/\/$/, '')
+    const url = `${base}/aml/addresses/${encodeURIComponent(target)}/flow_sankey?depth=${props.depth}`
+    const data = await api.get(url)
+
+    sankeyData.value = data || { nodes: [], links: [], summary: null }
+
+    // gambar hanya kalau panel Flow sedang tampil (sankeyEl sudah ada)
+    if (currentView.value === 'flow') {
+      if (!sankeyData.value?.links?.length) {
+        await loadSankey()
+      }
+      await nextTick()
+      renderSankey()
+      // beberapa layout butuh resize setelah visible
+      setTimeout(() => sankeyChart && sankeyChart.resize(), 0)
+    }
+  } catch (e) {
+    console.error('loadSankey error', e)
+    toast.add({ severity: 'error', summary: 'Failed to load flow', detail: e?.data?.message || e?.message || 'Error', life: 4000 })
+  } finally {
+    sankeyLoading.value = false
+  }
+}
+
+function colorForFlag(flag) {
+  // keep consistent: blacklisted=red, risky=orange, normal=gray
+  if (flag === 'blacklisted') return '#dc3545'
+  if (flag === 'risky') return '#fd7e14'
+  return '#adb5bd'
+}
+
+async function renderSankey() {
+  if (!sankeyEl.value) return
+
+  if (!echarts) {
+    // register modular agar sinkey pasti ada
+    const E = await import('echarts/core')
+    const { SankeyChart } = await import('echarts/charts')
+    const { TooltipComponent } = await import('echarts/components')
+    const { CanvasRenderer } = await import('echarts/renderers')
+    E.use([SankeyChart, TooltipComponent, CanvasRenderer])
+    echarts = E
+  }
+
+  if (sankeyChart) {
+    sankeyChart.dispose()
+    sankeyChart = null
+  }
+  sankeyChart = echarts.init(sankeyEl.value)
+
+  const nodes = sankeyData.value.nodes || []
+  const links = (sankeyData.value.links || []).map(l => ({
+    ...l,
+    lineStyle: { color: colorForFlag(l.flag), opacity: 0.6 },
+    itemStyle: { color: colorForFlag(l.flag) }
+  }))
+
+  sankeyChart.setOption({
+    tooltip: {
+      trigger: 'item',
+      formatter: (p) => p.dataType === 'edge'
+        ? `<div style="min-width:220px">
+             <div><b>${p.data.source}</b> → <b>${p.data.target}</b></div>
+             <div>Value: ${p.data.value} ETH</div>
+             <div>Flag: ${p.data.flag}</div>
+           </div>`
+        : `<b>${p.data.name}</b>`
+    },
+    series: [{
+      type: 'sankey',
+      nodeAlign: 'justify',
+      draggable: true,
+      emphasis: { focus: 'adjacency' },
+      label: { color: '#495057' },
+      data: nodes,
+      links: links,
+      lineStyle: { curveness: 0.5 }
+    }]
+  })
+}
+
+function destroySankey() {
+  if (sankeyChart) { sankeyChart.dispose(); sankeyChart = null }
+}
 
 /* ---------------- utils ---------------- */
 function destroy () {
@@ -118,12 +225,32 @@ async function render() {
 }
 
 /* ---------------- watchers & lifecycle ---------------- */
-watch(() => wallet.value, () => { if (currentView.value === 'network') render() }, { immediate: true })
+watch(() => wallet.value, () => loadSankey(), { immediate: true })
+watch(() => [props.address, props.depth], () => loadSankey())
+
 watch(() => currentView.value, async (v) => {
-  if (v === 'network') await nextTick().then(render)
+  if (v === 'network') {
+    await nextTick()
+    render()
+  }
+  if (v === 'flow') {
+    // data mungkin sudah ada, tinggal render
+    await nextTick()
+    renderSankey()
+    setTimeout(() => sankeyChart && sankeyChart.resize(), 0)
+  }
 })
+
 onMounted(render)
+onMounted(() => {
+  window.addEventListener('resize', () => sankeyChart && sankeyChart.resize())
+})
+
 onBeforeUnmount(destroy)
+onBeforeUnmount(() => {
+  destroySankey()
+  window.removeEventListener('resize', () => sankeyChart && sankeyChart.resize())
+})
 
 /* ---------------- derived for Flow tab ---------------- */
 const flowSummary = ref({ inTotal: 0, outTotal: 0, biggestPeers: [], frequentPeers: [] })
@@ -162,7 +289,7 @@ watch(() => currentView.value, (v) => { if (v === 'flow') computeFlow() })
         </div>
         <div>
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Transaction Flow Analysis</h3>
-          <p class="text-sm text-gray-500 dark:text-gray-400">Top 3 biggest tx + Top 3 most-frequent peers</p>
+          <!-- <p class="text-sm text-gray-500 dark:text-gray-400">Top 3 biggest tx + Top 3 most-frequent peers</p> -->
         </div>
       </div>
 
@@ -207,6 +334,30 @@ watch(() => currentView.value, (v) => { if (v === 'flow') computeFlow() })
     </div>
 
     <div v-else-if="currentView === 'flow'" class="space-y-4">
+        <TabPanel header="Flow">
+        <Card>
+          <template #content>
+
+            <!-- Sankey Graph -->
+            <div class="mt-4" style="height: 420px; width: 100%; position: relative;">
+              <div v-if="sankeyLoading" class="flex align-items-center justify-content-center" style="height:100%;">
+                Loading flow…
+              </div>
+              <div v-else-if="(sankeyData.links?.length || 0) > 0" ref="sankeyEl" style="height:100%; width:100%;"></div>
+              <div v-else class="h-full flex items-center justify-center text-sm text-gray-500">
+                No transactions found for this address.
+              </div>
+            </div>
+
+            <!-- Legend sederhana -->
+            <div class="mt-3 text-sm">
+              <span class="mr-3"><span class="inline-block" style="width:12px;height:12px;background:#dc3545;border-radius:2px;display:inline-block;margin-right:6px;"></span>Blacklisted</span>
+              <span class="mr-3"><span class="inline-block" style="width:12px;height:12px;background:#fd7e14;border-radius:2px;display:inline-block;margin-right:6px;"></span>High Risk</span>
+              <span><span class="inline-block" style="width:12px;height:12px;background:#adb5bd;border-radius:2px;display:inline-block;margin-right:6px;"></span>Normal</span>
+            </div>
+          </template>
+        </Card>
+      </TabPanel>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
           <div class="text-sm text-gray-600 dark:text-gray-300 mb-1">Incoming Total</div>

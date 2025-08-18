@@ -2,15 +2,14 @@ import os
 import joblib
 import requests
 import psycopg2.extras
-from flask import Blueprint, render_template, request, flash, redirect, url_for, session, abort, make_response
+from flask import Blueprint, render_template, request, flash, redirect, url_for, session, abort, make_response, jsonify
 from datetime import datetime
 from weasyprint import HTML
 from ..database import get_db_connection
 from ..utils import jwt_required, jwt_roles_required, roles_required, login_required
 from app.services.case_service import list_cases, can_user_see_case, create_case, get_case_with_assignments
 from app.services.user_service import get_all_users
-
-
+from psycopg2.extras import RealDictCursor
 
 from ..services.transaction_service import (
     get_risky_interactions,
@@ -24,6 +23,7 @@ from ..services.transaction_service import (
     get_anomaly_transactions,
     get_transitive_risk_graph,
     get_blacklisted_wallets,
+    _normalize_to_eth,
 )
 from ..services.kyc_service import (
     get_wallet_summary,
