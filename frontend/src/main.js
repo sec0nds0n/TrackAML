@@ -6,14 +6,14 @@ import router from './router'
 import PermissionDirectives from './directives/permission'
 
 import PrimeVue from 'primevue/config'
-import Aura from '@primeuix/themes/aura'          // ✅ pilih AURA (v4 pakai preset, bukan CSS)
+import Aura from '@primeuix/themes/aura'
 import ConfirmationService from 'primevue/confirmationservice'
 import ToastService from 'primevue/toastservice'
 import Tooltip from 'primevue/tooltip'
 import Toast from 'primevue/toast'
 
 import '@/assets/styles.scss'
-import 'primeicons/primeicons.css'                // ikon (centang, dll)
+import 'primeicons/primeicons.css'
 
 import { useAuthStore } from '@/stores/auth'
 
@@ -27,7 +27,7 @@ app.use(PrimeVue, {
   theme: {
     preset: Aura,
     options: {
-      darkModeSelector: '.app-dark',             // tambahkan class ini di <html> / <body> untuk dark mode
+      darkModeSelector: '.app-dark',
     },
   },
 })

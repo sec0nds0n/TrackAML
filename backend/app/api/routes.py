@@ -105,6 +105,12 @@ anomaly_tx_model = ns_anomalies.model('AnomalyTransaction', {
     'reason': fields.String(description='Alasan anomaly')
 })
 
+# Page model untuk response {items,total}
+anomaly_tx_page_model = ns_anomalies.model('AnomalyTransactionPage', {
+    'items': fields.List(fields.Nested(anomaly_tx_model)),
+    'total': fields.Integer(description='Total baris sebelum paging')
+})
+
 blacklisted_wallet_model = ns_anomalies.model('BlacklistedWallet', {
     'address': fields.String(description='Alamat wallet'),
     'source': fields.String(description='Sumber blacklist'),
@@ -124,17 +130,39 @@ class AnomalyCount(Resource):
         return {'count': int(c)}
 @ns_anomalies.route('/transactions')
 class AnomalyTransactionList(Resource):
-    @ns_anomalies.marshal_list_with(anomaly_tx_model)
+    @ns_anomalies.marshal_with(anomaly_tx_page_model)
     def get(self):
-        """List semua transaksi dengan is_anomaly = TRUE"""
-        return get_anomaly_transactions()
+        limit  = request.args.get('limit', type=int) or request.args.get('size', type=int) or 50
+        if request.args.get('offset') is not None:
+            offset = max(0, int(request.args.get('offset', 0)))
+        else:
+            page   = max(1, int(request.args.get('page', 1)))
+            offset = (page - 1) * limit
 
+        sort_by  = request.args.get('sort_by')  or 'created_at'
+        sort_dir = request.args.get('sort_dir') or 'desc'
+        q        = request.args.get('q') or ''
+        detector = request.args.get('detector') or ''
+
+        return get_anomaly_transactions(
+            limit=limit, offset=offset,
+            sort_by=sort_by, sort_dir=sort_dir,
+            q=q, detector=detector,
+            include_total=True
+        )
 @ns_anomalies.route('/blacklist')
 class BlacklistedWalletList(Resource):
-    @ns_anomalies.marshal_list_with(blacklisted_wallet_model)
     def get(self):
-        """List semua wallet yang diblacklist"""
-        return get_blacklisted_wallets()
+        limit  = request.args.get('limit', type=int) or 50
+        offset = request.args.get('offset', type=int) or 0
+        q      = request.args.get('q') or ''
+        sort_by  = request.args.get('sort_by')  or 'added_on'
+        sort_dir = request.args.get('sort_dir') or 'desc'
+        return get_blacklisted_wallets(
+            limit=limit, offset=offset,
+            q=q, sort_by=sort_by, sort_dir=sort_dir,
+            include_total=False  # atau True kalau butuh total-nya juga
+        )
 @ns_anomalies.route('/summary')
 class AnomalySummary(Resource):
     def get(self):

@@ -409,56 +409,181 @@ def get_transaction_details(tx_hash: str):
         }
     }
 
-def get_anomaly_transactions(limit=100, offset=0):
+def get_anomaly_transactions(
+    limit=None, offset=None,
+    sort_by='created_at', sort_dir='desc',
+    q=None, detector=None,
+    include_total=False
+):
     """
-    Ambil daftar anomaly transaksi dari tabel anomalies (kolom detector/reason),
-    lengkapi dengan detail transaksi jika tersedia.
-    - Hanya anomaly dengan a.tx_hash IS NOT NULL (tipe transaksi).
-    - Exclude yang sudah dibuat case (cases.case_type='anomaly transaction' & reference_id=tx_hash).
+    Ambil anomaly tx dari tabel anomalies (LEFT JOIN transactions),
+    support search/sort/pagination. Jika include_total=True → return {items,total}
     """
+    from psycopg2.extras import RealDictCursor
+
+    # normalisasi & guard upper bound (hindari fetch 30k sekaligus ke FE)
+    limit = 50 if limit is None else int(limit)
+    limit = max(1, min(limit, 1000))   # naikkan kalau mau (1000 aman)
+    offset = max(0, int(offset or 0))
+    sb = (sort_by or 'created_at').lower()
+    od = 'asc' if str(sort_dir).lower() == 'asc' else 'desc'
+
+    sort_map = {
+        'created_at': "COALESCE(t.timestamp, a.created_at)",
+        'timestamp' : "COALESCE(t.timestamp, a.created_at)",
+        'tx_hash'   : "a.tx_hash",
+        'detector'  : "a.detector",
+        'reason'    : "a.reason",
+        'sender'    : "t.sender",
+        'receiver'  : "t.receiver",
+        'value'     : "t.value::numeric"
+    }
+    order_expr = sort_map.get(sb, "COALESCE(t.timestamp, a.created_at)")
+
+    where = ["a.tx_hash IS NOT NULL", "c.id IS NULL"]
+    params = { "case_type": CASE_TYPE_MAP['transaction'] }
+
+    if q:
+        q = q.strip()
+        if q:
+            params["like"] = f"%{q}%"
+            where.append("""(
+                a.tx_hash ILIKE %(like)s OR
+                a.detector ILIKE %(like)s OR
+                a.reason   ILIKE %(like)s OR
+                t.sender   ILIKE %(like)s OR
+                t.receiver ILIKE %(like)s
+            )""")
+
+    if detector:
+        detector = detector.strip()
+        if detector:
+            params["detector"] = detector
+            where.append("a.detector = %(detector)s")
+
+    where_sql = "WHERE " + " AND ".join(where)
+
+    sql_count = f"""
+        SELECT COUNT(*) AS cnt
+        FROM anomalies a
+        LEFT JOIN transactions t
+               ON lower(t.tx_hash) = lower(a.tx_hash)
+        LEFT JOIN cases c
+               ON c.case_type::text = %(case_type)s
+              AND lower(c.reference_id) = lower(a.tx_hash)
+        {where_sql};
+    """
+
+    sql_items = f"""
+        SELECT
+            a.tx_hash,
+            t.sender,
+            t.receiver,
+            t.value,
+            COALESCE(t.timestamp, a.created_at) AS timestamp,
+            a.detector,
+            a.reason
+        FROM anomalies a
+        LEFT JOIN transactions t
+               ON lower(t.tx_hash) = lower(a.tx_hash)
+        LEFT JOIN cases c
+               ON c.case_type::text = %(case_type)s
+              AND lower(c.reference_id) = lower(a.tx_hash)
+        {where_sql}
+        ORDER BY {order_expr} {od}
+        LIMIT %(limit)s OFFSET %(offset)s;
+    """
+
+    from ..database import get_db_connection
     with get_db_connection() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-        # Cek kolom opsional di transactions agar aman di skema lama/baru
-        has_block_time = _table_has_column(conn, "transactions", "block_time")
+        total = None
+        if include_total:
+            cur.execute(sql_count, params)
+            total = int(cur.fetchone()["cnt"])
+        cur.execute(sql_items, {**params, "limit": limit, "offset": offset})
+        items = cur.fetchall()
 
-        time_expr = "COALESCE(t.timestamp, t.block_time, a.created_at)" if has_block_time \
-                    else "COALESCE(t.timestamp, a.created_at)"
+    # cast numeric → float (aman buat JSON)
+    for it in items:
+        if it.get("value") is not None:
+            try:
+                it["value"] = float(it["value"])
+            except Exception:
+                pass
 
-        cur.execute(f"""
-            SELECT
-                a.tx_hash,
-                t.sender,
-                t.receiver,
-                t.value,
-                {time_expr}         AS timestamp,
-                a.detector,
-                a.reason
-            FROM anomalies a
-            LEFT JOIN transactions t
-                   ON lower(t.tx_hash) = lower(a.tx_hash)
-            LEFT JOIN cases c
-                   ON c.case_type::text = %s
-                  AND lower(c.reference_id) = lower(a.tx_hash)
-            WHERE a.tx_hash IS NOT NULL
-              AND c.id IS NULL
-            ORDER BY {time_expr} DESC NULLS LAST
-            LIMIT %s OFFSET %s
-        """, (CASE_TYPE_MAP['transaction'], limit, offset))
-        return cur.fetchall()
+    return {"items": items, "total": total} if include_total else items
 
-def get_blacklisted_wallets(limit=100, offset=0):
+def get_blacklisted_wallets(
+    limit=None, offset=None,
+    q=None, sort_by='added_on', sort_dir='desc',
+    include_total=False
+):
+    """
+    Ambil blacklist wallets (exclude yang sudah dibuat case), support search/sort/pagination.
+    """
+    from psycopg2.extras import RealDictCursor
+    from ..database import get_db_connection
+
+    limit = 50 if limit is None else int(limit)
+    limit = max(1, min(limit, 1000))
+    offset = max(0, int(offset or 0))
+    sb = (sort_by or 'added_on').lower()
+    od = 'asc' if str(sort_dir).lower() == 'asc' else 'desc'
+
+    sort_map = {
+        'added_on': 'b.added_on',
+        'address' : 'b.address',
+        'source'  : 'b.source',
+        'category': 'b.category'
+    }
+    order_expr = sort_map.get(sb, 'b.added_on')
+
+    where = ["c.id IS NULL"]
+    params = { "case_type": CASE_TYPE_MAP['wallet'] }
+
+    if q:
+        q = q.strip()
+        if q:
+            params["like"] = f"%{q}%"
+            where.append("""(
+                b.address  ILIKE %(like)s OR
+                b.source   ILIKE %(like)s OR
+                b.category ILIKE %(like)s OR
+                b.reason   ILIKE %(like)s
+            )""")
+
+    where_sql = "WHERE " + " AND ".join(where)
+
+    sql_count = f"""
+        SELECT COUNT(*) AS cnt
+        FROM blacklist_addresses b
+        LEFT JOIN cases c
+          ON c.case_type::text = %(case_type)s
+         AND lower(c.reference_id) = lower(b.address)
+        {where_sql};
+    """
+
+    sql_items = f"""
+        SELECT
+            b.address, b.source, b.category, b.reason, b.added_on
+        FROM blacklist_addresses b
+        LEFT JOIN cases c
+          ON c.case_type::text = %(case_type)s
+         AND lower(c.reference_id) = lower(b.address)
+        {where_sql}
+        ORDER BY {order_expr} {od} NULLS LAST
+        LIMIT %(limit)s OFFSET %(offset)s;
+    """
+
     with get_db_connection() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute("""
-            SELECT
-                b.address, b.source, b.category, b.reason, b.added_on
-            FROM blacklist_addresses b
-            LEFT JOIN cases c
-              ON c.case_type::text = %s
-             AND lower(c.reference_id) = lower(b.address)
-            WHERE c.id IS NULL
-            ORDER BY b.added_on DESC NULLS LAST
-            LIMIT %s OFFSET %s
-        """, (CASE_TYPE_MAP['wallet'], limit, offset))
-        return cur.fetchall()
+        total = None
+        if include_total:
+            cur.execute(sql_count, params)
+            total = int(cur.fetchone()["cnt"])
+        cur.execute(sql_items, {**params, "limit": limit, "offset": offset})
+        items = cur.fetchall()
+
+    return {"items": items, "total": total} if include_total else items
     
 def get_blacklisted_wallets_count():
     """Hitung jumlah wallet di blacklist yang BELUM dibuat case."""

@@ -16,11 +16,12 @@ import SelectButton from 'primevue/selectbutton';
 import Slider from 'primevue/slider';
 import Tag from 'primevue/tag';
 import Textarea from 'primevue/textarea';
-import { ref, onMounted, computed, reactive } from 'vue';
+import { ref, onMounted, computed, reactive, watch } from 'vue';
 import { useToast } from 'primevue/usetoast'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import Calendar from 'primevue/calendar'
+import { useDebounceFn } from '@vueuse/core'
 
 // Use the composable
 const {
@@ -65,6 +66,14 @@ const blacklistRows = ref([])
 const anomalyRows = ref([])
 
 const blacklistCount = ref(null)
+// --- NEW: pagination/sort/filter untuk anomalies ---
+const anomalyFirst = ref(0)
+const anomalyRowsPerPage = ref(50)
+const anomalyPage = computed(() => Math.floor(anomalyFirst.value / anomalyRowsPerPage.value) + 1)
+
+const anomalySortField = ref('created_at')
+const anomalySortOrder = ref(-1)       // -1 = DESC, 1 = ASC
+const anomalySearch = ref('')          // global search (optional)
 
 // --- formatter util ---
 const shortAddr = (a) => a ? `${a.slice(0,6)}…${a.slice(-4)}` : '-'
@@ -86,12 +95,23 @@ const newAddress = ref({
     riskScore: 50
 });
 
-const filters = ref({
-    global: { value: null, matchMode: 'contains' },
-    address: { value: null, matchMode: 'contains' },
-    network: { value: null, matchMode: 'equals' },
-    reason: { value: null, matchMode: 'contains' }
-});
+// Filter untuk tabel Suspicious Wallets
+const filtersWallet = ref({
+  global: { value: null, matchMode: 'contains' },
+  address: { value: null, matchMode: 'contains' },
+  network: { value: null, matchMode: 'equals' },
+  reason: { value: null, matchMode: 'contains' }
+})
+
+// Filter untuk tabel Anomaly Transactions (server-side)
+const filtersAnoms = ref({
+  global:   { value: null, matchMode: 'contains' },
+  tx_hash:  { value: null, matchMode: 'contains' },
+  sender:   { value: null, matchMode: 'contains' },
+  receiver: { value: null, matchMode: 'contains' },
+  detector: { value: null, matchMode: 'contains' },
+  reason:   { value: null, matchMode: 'contains' },
+})
 
 // Chart options
 const riskChartOptions = ref({
@@ -468,24 +488,74 @@ async function loadBlacklist() {
   } finally { loadingBlacklist.value = false }
 }
 
+function buildAnomsQS () {
+  const params = new URLSearchParams()
+  params.set('limit', String(Number(anomalyRowsPerPage.value) || 50))
+  params.set('offset', String(Number(anomalyFirst.value) || 0))
+  params.set('size', String(Number(anomalyRowsPerPage.value) || 50))
+  params.set('page', String(Number(anomalyPage.value) || 1))
+  params.set('sort_by', anomalySortField.value || 'created_at')
+  params.set('sort_dir', anomalySortOrder.value === 1 ? 'asc' : 'desc')
+  const q = filtersAnoms.value?.global?.value ?? anomalySearch.value ?? ''
+  if (q) params.set('q', q)
+  // cache buster: paksa no-cache
+  params.set('_', String(Date.now()))
+  return params.toString()
+}
+
 async function loadAnomalies() {
   loadingAnoms.value = true
   try {
-    const res = await fetch(`${API_BASE}/anomalies/transactions`, { headers: { Accept: 'application/json' } })
+    const url = `${API_BASE}/anomalies/transactions?${buildAnomsQS()}`
+    console.debug('[Anoms] fetch:', {
+      url,
+      first: anomalyFirst.value,
+      rows: anomalyRowsPerPage.value,
+      sort_by: anomalySortField.value,
+      sort_dir: anomalySortOrder.value === 1 ? 'asc' : 'desc',
+      q: filtersAnoms.value?.global?.value
+    })
+    const res = await fetch(url, {
+      cache: 'no-store',
+      headers: { 'Accept': 'application/json' }
+    })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const rows = await res.json()
-    anomalyRows.value = rows
-
-    // Ambil nilai terbesar antara backend count & panjang tabel (fallback aman)
-    const backend = Number.isFinite(anomalyCount.value) ? anomalyCount.value : 0
-    const local = Array.isArray(rows) ? rows.length : 0
-    anomalyCount.value = Math.max(backend, local)
+    const data = await res.json()
+    // dukung 2 bentuk: {items,total} atau array
+    const items = Array.isArray(data) ? data : (data.items || [])
+    anomalyRows.value = items
+    const total = Array.isArray(data) ? (anomalyCount.value ?? items.length) : (data.total ?? items.length)
+    if (typeof total === 'number') anomalyCount.value = total
   } catch (e) {
     console.error('loadAnomalies', e)
   } finally {
     loadingAnoms.value = false
   }
 }
+
+function onAnomsPage(e) {
+  anomalyFirst.value = Number(e.first ?? 0)
+  anomalyRowsPerPage.value = Number(e.rows ?? 50)
+  loadAnomalies()
+}
+function onAnomsSort(e) {
+  anomalySortField.value = e.sortField || 'created_at'
+  anomalySortOrder.value = typeof e.sortOrder === 'number' ? e.sortOrder : -1
+  // reset ke halaman pertama
+  anomalyFirst.value = 0
+  loadAnomalies()
+}
+function onAnomsFilter() {
+  anomalyFirst.value = 0
+  reloadAnomsDebounced()
+}
+
+const reloadAnomsDebounced = useDebounceFn?.(loadAnomalies, 350) || loadAnomalies
+// Trigger reload ketika input search anomalies berubah (header custom)
+watch(() => filtersAnoms.value.global.value, () => {
+  anomalyFirst.value = 0
+  reloadAnomsDebounced()
+})
 
 async function loadAnomalyCard() {
   try {
@@ -566,7 +636,7 @@ onMounted(() => {
                 
                 <DataTable
                     :value="blacklistRows"
-                    v-model:filters="filters"
+                    v-model:filters="filtersWallet"
                     :loading="loadingBlacklist"
                     dataKey="address"
                     :paginator="true" :rows="10"
@@ -579,7 +649,7 @@ onMounted(() => {
                         <div class="flex justify-content-end align-items-center w-full py-2">
                         <span class="p-input-icon-left">
                             <i class="pi pi-search" />
-                            <InputText v-model="filters['global'].value" placeholder="Search wallets…" class="w-16rem" />
+                            <InputText v-model="filtersWallet['global'].value" placeholder="Search wallets…" class="w-16rem" />
                         </span>
                         </div>
                     </template>
@@ -643,10 +713,21 @@ onMounted(() => {
 
             <DataTable
                 :value="anomalyRows"
-                v-model:filters="filters"
+                v-model:filters="filtersAnoms"
                 :loading="loadingAnoms"
                 dataKey="tx_hash"
-                :paginator="true" :rows="10"
+                :lazy="true"
+                :paginator="true"
+                :rows="anomalyRowsPerPage"
+                :first="anomalyFirst"
+                :totalRecords="anomalyCount || 0"
+                :rowsPerPageOptions="[10,25,50,100]"
+                :sortField="anomalySortField"
+                :sortOrder="anomalySortOrder"
+                :sortMode="'single'"
+                @page="onAnomsPage"
+                @sort="onAnomsSort"
+                @filter="onAnomsFilter"
                 responsiveLayout="scroll"
                 class="p-datatable-sm"
                 :globalFilterFields="['tx_hash','sender','receiver','detector','reason']"
@@ -655,8 +736,8 @@ onMounted(() => {
                 <template #header>
                 <div class="flex justify-content-end py-2">
                     <span class="p-input-icon-left">
-                    <i class="pi pi-search" />
-                    <InputText v-model="filters['global'].value" placeholder="Search transactions…" class="w-16rem" />
+                        <i class="pi pi-search" />
+                        <InputText v-model="filtersAnoms['global'].value" placeholder="Search transactions…" class="w-16rem" />
                     </span>
                 </div>
                 </template>
